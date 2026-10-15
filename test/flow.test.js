@@ -119,5 +119,13 @@ test('upcoming: filters to window and adds scoped earnings', () => {
   const now = Date.parse('2026-10-15T12:00:00Z');
   const D = {calendar: [{type: 'CPI', title: 'CPI', scheduled_et: '2026-10-20T08:30:00-04:00'}, {type: 'GDP', title: 'GDP', scheduled_et: '2026-11-30T08:30:00-05:00'}]};
   const ev = F.upcoming(D, [{t: 'AMZN', er: '2026-10-18', ern: 3}, {t: 'MSFT', er: '2026-12-01', ern: 47}], now, 7);
-  assert.deepEqual(ev.map(e => e.type), ['EARN', 'CPI']);
+  assert.deepEqual(ev.map(e => e.type), ['CPI', 'EARN']);
+});
+test('upcoming: macro first, watchlist earnings next, remaining sourced names last', () => {
+  const now = Date.parse('2026-10-15T12:00:00Z');
+  const D = {calendar:[{type:'CPI',title:'CPI',scheduled_et:'2026-10-20T08:30:00-04:00'}]};
+  const rows = [{t:'IBKR',er:'2026-10-15',ern:0},{t:'AMZN',er:'2026-10-19',ern:4}];
+  const ev=F.upcoming(D,rows,now,7,['AMZN']);
+  assert.deepEqual(ev.map(e=>e.type==='CPI'?'CPI':e.tk),['CPI','AMZN','IBKR']);
+  assert.equal(ev[1].watched,true);assert.equal(ev[2].watched,false);
 });

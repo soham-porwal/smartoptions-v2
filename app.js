@@ -193,10 +193,10 @@ function cell(r, c) {
     }
     case 'd1': return `<td data-tip="${esc(provTip(r, 'chg'))}">${pct(r.d1, 2, stReason(r, 'chg', '1d change'))}</td>`;
     case 'px': return `<td data-tip="${esc(provTip(r, 'price'))}">${num(r.px, 2, stReason(r, 'price', 'price'))}</td>`;
-    case 'spark': return `<td>${spark(r.spark, 64, 16)}</td>`;
+    case 'spark': return `<td>${spark(r.spark, 56, 16)}</td>`;
     case 'pef': return `<td class="ph">${num(r.pef, 1, stReason(r, 'pe_forward', 'forward P/E'))}</td>`;
     case 'peg': return `<td class="ph" data-tip="${esc(r.pegm || '')}">${num(r.peg, 2, stReason(r, 'peg', 'PEG'))}</td>`;
-    case 'pct': return `<td class="ph" data-tip="52w low ${r.lo} · high ${r.hi} · ${isNum(r.pct) ? r.pct.toFixed(0) + ' pctile' : ''}">${isNum(r.pct) ? `<span class="rng"><i style="left:${Math.max(0, Math.min(100, r.pct)) * .54}px"></i></span>` : na(stReason(r, 'range_52w', '52w range'))}</td>`;
+    case 'pct': return `<td class="ph" data-tip="52w low ${r.lo} · high ${r.hi} · ${isNum(r.pct) ? r.pct.toFixed(0) + ' pctile' : ''}">${isNum(r.pct) ? `<span class="rng"><i style="left:${Math.max(0, Math.min(100, r.pct)) * .42}px"></i></span>` : na(stReason(r, 'range_52w', '52w range'))}</td>`;
     case 'ern': return `<td class="ph" data-tip="${esc((r.er || '') + ' ' + (r.ert || '') + '\n' + (r.ers || ''))}">${isNum(r.ern) ? r.ern + 'd' : na(stReason(r, 'earnings', 'earnings date'))}</td>`;
     case 'iv': return `<td class="ph" data-tip="${esc(r.ivs ? `${r.ivs}\nexpiry ${r.ivx}, strike ${r.ivk}${r.ivspan ? '\nexpiry spans earnings' : ''}` : '')}">${isNum(r.iv) ? r.iv.toFixed(1) : na('ATM IV only fetched for movers + nearest-earnings names (status: ' + ((r.st || {}).atm_iv || 'not fetched') + ')')}</td>`;
     case 'opp': return `<td class="ph sam">${r.sam ? num(r.sam.opp, 1, 'no score in snapshot') : na("not in Sam's 2026-07-25 snapshot")}</td>`;
@@ -539,7 +539,9 @@ async function boot() {
   window.SO2 = {D: () => D, S: () => S, V, renderTable, renderAll, renderDetail, select, save, scenarioImpact, FACTORS, FLABEL, SHOCK_U, DEFAULTS, filtered, num, pct, na, esc, spark, isNum, seriesData, obsOf, showTab};
   wire();
   renderAll();
+  const op = new URLSearchParams(location.hash.slice(1)).get('open');
   showTab(V.tab);
+  if (op === 'controls' || op === 'about') toggleDrawer(op);
   setInterval(refresh, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', refresh);
   window.SO2_ready = true;

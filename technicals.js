@@ -19,7 +19,14 @@ const DEFAULTS = {
   squeeze_pctile: 20,    // Bollinger bandwidth at or below this percentile of its last 120 sessions = squeeze
   dd_bear: -20, dd_near: -5,
   pivot_k: 5,            // swing pivot = highest high / lowest low within k bars either side
+  // practitioner conventions (G. Mundada playbook, docs/GIRISH-PLAYBOOK.md); our numeric reading of his rules, editable
+  g_touch_pct: 1.5,      // pivots within this % of each other count as touches of the same level
+  g_vol_mult: 1.5,       // breakout volume must be >= this x the 20-day average
+  g_brk_n: 20,           // breakout = close beyond the highest/lowest close of the prior N sessions
+  g_mw_pct: 1.5,         // double top/bottom: the two peaks/troughs within this %
+  g_adx_side: 20, g_adx_strong: 50,
 };
+const GSRC = 'practitioner convention - G. Mundada (individual investor, not an advisor); his charts use 4-hour bars, these run on daily bars';
 
 /* ---------------- primitive series (arrays aligned to input; null until enough history) ---------------- */
 function sma(x, n) {
@@ -125,6 +132,12 @@ function pivots(h, l, k) {
     if (isH) hi.push({i, p: h[i]}); if (isL) lo.push({i, p: l[i]});
   }
   return {hi, lo};
+}
+
+function touchLevels(points, pct) { // cluster pivot prices; a level's touches = pivots within pct% of the cluster mean
+  const pts = points.map(x => x.p).sort((a, b) => a - b), out = [];
+  for (const v of pts) { const c = out.find(o => Math.abs(v / o.m - 1) * 100 <= pct); if (c) { c.v.push(v); c.m = c.v.reduce((a, b) => a + b, 0) / c.v.length; } else out.push({v: [v], m: v}); }
+  return out.map(o => ({level: o.m, touches: o.v.length})).sort((a, b) => b.touches - a.touches || b.level - a.level);
 }
 
 /* ---------------- analysis: values + signal words + plain language ---------------- */
@@ -295,6 +308,68 @@ function analyze(bars, ctx) {
       signal: x > th.rs_band ? 'bullish' : x < -th.rs_band ? 'bearish' : 'neutral', rule: `1-month return minus the median 1-month return of dashboard tickers in the same GICS sector; bullish > +${th.rs_band}, bearish < -${th.rs_band}`,
       plain: 'Is it leading or lagging its own sector peers on the dashboard?', change: 'Flips when peers catch up or fall behind.'});
   } else na('rs_sec', 'Relative', 'vs sector median', 'sector peers or 1M return missing');
+
+  // Practitioner detectors (G. Mundada playbook). All on daily bars; labelled as convention, not evidence.
+  const G = 'Practitioner (G. Mundada)';
+  const e50 = last(ma.ema50);
+  if (B.hasHL && n > 60) {
+    const P = pivots(h, l, th.pivot_k), lv = touchLevels(P.hi.concat(P.lo), th.g_touch_pct);
+    const sup = lv.filter(x => x.level < px && x.touches >= 2).sort((a, b) => b.touches - a.touches || b.level - a.level)[0];
+    const res = lv.filter(x => x.level > px && x.touches >= 2).sort((a, b) => b.touches - a.touches || a.level - b.level)[0];
+    add({id: 'g_sr', group: G, label: 'Most-touched support / resistance', value: null, signal: 'info',
+      text: `support ${sup ? `${f(sup.level)} (${sup.touches} touches)` : 'none with 2+ touches'} · resistance ${res ? `${f(res.level)} (${res.touches} touches)` : 'none with 2+ touches'}`,
+      rule: `rule 1: the line touching the MOST swing points (pivots within ${th.g_touch_pct}% grouped), not the absolute high/low. ${GSRC}`,
+      plain: 'Levels the stock has turned at repeatedly. His covered calls sit near resistance, cash-secured puts below support.', change: 'More touches strengthen a level; a decisive close through it breaks it.', levels: {sup, res}});
+    // Breakout / breakdown on volume (rule 6)
+    let brk = null;
+    for (let i = n - 1; i >= Math.max(th.g_brk_n + 1, 21, n - 5); i--) {
+      const prior = c.slice(i - th.g_brk_n, i), hiC = Math.max(...prior), loC = Math.min(...prior);
+      const av = B.hasV ? v.slice(i - 20, i).reduce((a, b) => a + b, 0) / 20 : null, vm = av ? v[i] / av : null;
+      if (c[i] > hiC || c[i] < loC) { brk = {ago: n - 1 - i, up: c[i] > hiC, lvl: c[i] > hiC ? hiC : loC, vm}; break; }
+    }
+    const bbRow = rows.find(r => r.id === 'bb'), sq = bbRow && bbRow.squeeze;
+    const conf = !!(brk && isNum(brk.vm) && brk.vm >= th.g_vol_mult);
+    const rng = c.slice(-th.g_brk_n - 1, -1);
+    add({id: 'g_brk', group: G, label: `Breakout on volume (${th.g_brk_n}d)`, value: brk && isNum(brk.vm) ? brk.vm : null,
+      text: brk ? `${brk.up ? 'breakout above' : 'breakdown below'} ${f(brk.lvl)} ${brk.ago ? brk.ago + ' sessions ago' : 'today'} · volume ${isNum(brk.vm) ? f(brk.vm, 2) + 'x 20d avg' : 'n/a'}${conf ? ' (confirmed)' : ' (volume did not confirm)'}${sq ? ' · Bollinger squeeze present' : ''}` : `no close beyond the prior ${th.g_brk_n}-session range in the last 5 sessions`,
+      signal: conf ? (brk.up ? 'bullish' : 'bearish') : 'neutral',
+      rule: `rule 6: close beyond the highest/lowest close of the prior ${th.g_brk_n} sessions within the last 5 sessions, confirmed only if that day's volume >= ${th.g_vol_mult}x its 20-day average; he waits for a retest before acting. ${GSRC}`,
+      plain: brk ? (conf ? 'A range break with heavy volume behind it: his setup, after a retest of the broken level.' : 'Price broke the range but volume did not confirm it.') : 'No range break right now.',
+      change: brk ? `Fails if price closes back ${brk.up ? 'below' : 'above'} ${f(brk.lvl)}.` : `A close above ${f(Math.max(...rng))} or below ${f(Math.min(...rng))} on heavy volume.`});
+    // Old resistance becomes support (rule 5)
+    let flip = null;
+    for (const x of touchLevels(P.hi, th.g_touch_pct).filter(o => o.touches >= 2 && o.level < px)) {
+      let crossed = -1;
+      for (let i = Math.max(1, n - 60); i < n; i++) if (c[i - 1] <= x.level && c[i] > x.level) { crossed = i; break; }
+      if (crossed < 0) continue;
+      const priorHighs = P.hi.filter(o => o.i < crossed && Math.abs(o.p / x.level - 1) * 100 <= th.g_touch_pct).length;
+      if (priorHighs < 2) continue; // it must have acted as resistance (2+ swing highs) BEFORE the break
+      let retest = false; for (let i = crossed + 3; i < n; i++) if (Math.abs(l[i] / x.level - 1) * 100 <= th.g_touch_pct && c[i] > x.level) retest = true;
+      if (retest) { flip = x; break; }
+    }
+    add({id: 'g_flip', group: G, label: 'Old resistance -> new support', value: flip ? flip.level : null,
+      text: flip ? `broke above ${f(flip.level)} (${flip.touches} touches), retest held${e50 != null ? `, close ${px > e50 ? 'above' : 'below'} EMA50 ${f(e50)}` : ''}` : 'no broken-and-retested level in the last 60 sessions',
+      signal: flip && e50 != null && px > e50 ? 'bullish' : 'neutral',
+      rule: `rule 5: a level with 2+ swing highs before the break, crossed upward in the last 60 sessions, retested 3+ sessions later (low within ${th.g_touch_pct}%) with the close holding above it, and price above the long EMA (EMA50 here; he uses a 180-period EMA on 4-hour bars). ${GSRC}`,
+      plain: flip ? 'A former ceiling is now acting as a floor: his entry pattern, stop just below the level.' : 'No resistance-turned-support setup right now.', change: flip ? `Fails on a close below ${f(flip.level)}.` : 'Forms after a break above resistance and a successful retest.'});
+    // Double top (M) / double bottom (W) (rule 7)
+    const hs = P.hi.filter(o => o.i >= n - 60).slice(-2), ls = P.lo.filter(o => o.i >= n - 60).slice(-2);
+    let mw = null;
+    if (hs.length === 2 && Math.abs(hs[1].p / hs[0].p - 1) * 100 <= th.g_mw_pct) { const top = Math.max(hs[0].p, hs[1].p), neck = Math.min(...l.slice(hs[0].i, hs[1].i + 1)); mw = {kind: 'M (double top)', top, neck, done: px < neck, sig: 'bearish', target: neck - (top - neck)}; }
+    if (!mw && ls.length === 2 && Math.abs(ls[1].p / ls[0].p - 1) * 100 <= th.g_mw_pct) { const top = Math.min(ls[0].p, ls[1].p), neck = Math.max(...h.slice(ls[0].i, ls[1].i + 1)); mw = {kind: 'W (double bottom)', top, neck, done: px > neck, sig: 'bullish', target: neck + (neck - top)}; }
+    add({id: 'g_mw', group: G, label: 'Double top / bottom (M / W)', value: mw ? mw.neck : null,
+      text: mw ? `${mw.kind} at ${f(mw.top)}, neckline ${f(mw.neck)} · ${mw.done ? `confirmed (close beyond neckline), measured move to ${f(mw.target)}` : 'forming (neckline not broken)'}` : 'none in the last 60 sessions',
+      signal: mw && mw.done ? mw.sig : 'neutral',
+      rule: `rule 7: last two swing highs (M) or lows (W) within 60 sessions and within ${th.g_mw_pct}% of each other; confirmed on a close through the neckline; expected move = pattern height. ${GSRC}`,
+      plain: mw ? 'Price tested the same level twice. The height of the M/W is his expected move once the neckline breaks.' : 'No twin peaks or troughs right now.', change: mw ? `Confirmation/cancel at the neckline ${f(mw.neck)}.` : 'Forms when a second swing stalls near the first.'});
+  } else ['g_sr', 'g_brk', 'g_flip', 'g_mw'].forEach(id => na(id, G, {g_sr: 'Most-touched support / resistance', g_brk: 'Breakout on volume', g_flip: 'Old resistance -> new support', g_mw: 'Double top / bottom'}[id], B.hasHL ? 'needs 60+ sessions' : 'needs high/low bars'));
+  const adxR = rows.find(r => r.id === 'adx');
+  if (adxR && isNum(adxR.value)) { const ax = adxR.value;
+    add({id: 'g_adx', group: G, label: 'ADX trend strength bands', value: ax, signal: 'info',
+      text: `ADX ${f(ax, 1)}: ${ax >= th.g_adx_strong ? 'very strong trend' : ax >= th.adx_trend ? 'trend starting / present' : ax <= th.g_adx_side ? 'sideways' : 'in between (no call)'}`,
+      rule: `rule 9: <= ${th.g_adx_side} sideways, >= ${th.adx_trend} trend starting, ~${th.g_adx_strong} very strong; lagging, combine with OBV and the SMA cross. ${GSRC}`,
+      plain: 'How strong the trend is, regardless of direction; +DI/-DI (in the ADX row) give the direction.', change: `Crossing ${th.g_adx_side} / ${th.adx_trend} / ${th.g_adx_strong}.`}); }
+  na('g_intraday', G, 'VWAP + 8/21 EMA + 200 MA (intraday)', 'his rule 10 is intraday-only; we store daily bars, so it is not computed (not faked)');
 
   // Trend regime tag
   const sa = last(ma.sma50), sb = last(ma.sma200), sa20 = ma.sma50[n - 21];

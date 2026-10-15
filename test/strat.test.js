@@ -131,3 +131,15 @@ test('recommend: every ranked entry shows the rules that scored it and a flip li
   for (const x of r.ranked) { assert.ok(Array.isArray(x.parts)); assert.ok(x.flip); assert.ok(isFinite(x.score)); }
   assert.ok(r.rules.length >= 10 && r.rules.every(R => R.desc));
 });
+
+test('flowHint (Flow step 4 hook): ranked names from the flow inputs, no NaN, missing inputs listed', () => {
+  const prev = globalThis.SO2;
+  globalThis.SO2 = {D: () => ({rel: {regime: {score: 55}, vol_breadth: {term_ratio: {value: 0.9}}}, macro: {curve: [{id: 'us3m', v: 4.28}]}})};
+  try {
+    const h = S.flowHint({ticker: 'FIX', price: 100, iv: 40, realized_vol: 25, days_to_earnings: 50, horizon_days: 30, name_word: 'MIXED'});
+    assert.match(h, /Strategy engine \(top 5 of \d+, stance neutral/);
+    assert.ok(!/NaN|undefined/.test(h.replace(/<[^>]+>/g, '')));
+    const h2 = S.flowHint({ticker: 'FIX', price: 100, name_word: 'STRONG'});
+    assert.match(h2, /stance bullish/); assert.match(h2, /missing: iv/);
+  } finally { globalThis.SO2 = prev; }
+});

@@ -138,7 +138,8 @@
     const rows = table.rows;
     res.rowsRead = rows.length; res.columns = header;
     const col = i => rows.map(r => r[i]);
-    const share = (i, f) => { const v = col(i).filter(x => String(x == null ? '' : x).trim() !== ''); return v.length ? v.filter(f).length / v.length : 0; };
+    const blank = x => { const t = String(x == null ? '' : x).trim(); return !t || /^(n\/?a|--?|null|none|\.)$/i.test(t); };
+    const share = (i, f) => { const v = col(i).filter(x => !blank(x)); return v.length ? v.filter(f).length / v.length : 0; };
     // ticker column: header name wins, else best known-match share (or ticker-shape share without a universe)
     let tc = -1, tcScore = 0;
     header.forEach((h, i) => {
@@ -148,6 +149,7 @@
     if (tcScore < 0.5) tc = -1;
     let dc = -1;
     header.forEach((h, i) => { if (dc < 0 && i !== tc && share(i, x => isoDate(x)) >= 0.8) dc = i; });
+    const words = h => h.replace(/[_\-]+/g, ' ');
     const numeric = header.map((h, i) => i).filter(i => i !== tc && i !== dc && share(i, x => num(x) != null) >= 0.8);
     res.numericColumns = numeric.map(i => header[i]);
     if (tc >= 0) {
@@ -158,10 +160,10 @@
         if (!m.shaped || seen.has(m.t)) continue; seen.add(m.t);
         (m.known === false ? res.unknown : res.matched).push(m.t);
       }
-      const bookCols = numeric.filter(i => BOOK_WORDS.test(header[i]));
+      const bookCols = numeric.filter(i => BOOK_WORDS.test(words(header[i])));
       if (bookCols.length) {
-        const qi = bookCols.find(i => /qty|quantity|shares|units|position/i.test(header[i]));
-        const ci = bookCols.find(i => /cost|basis|avg|average/i.test(header[i]));
+        const qi = bookCols.find(i => /qty|quantity|shares|units|position/i.test(words(header[i])));
+        const ci = bookCols.find(i => /cost|basis|avg|average/i.test(words(header[i])));
         res.kind = 'book';
         res.book = {};
         for (const r of rows) {
@@ -249,8 +251,8 @@
   }
   function clearMine() {
     undoStack.push({data: store.get(), watch: root.SmartOptionsWatchlist ? root.SmartOptionsWatchlist.get() : null});
-    store.clear(); try { localStorage.removeItem('so_watchlist_v1'); } catch (e) { /* storage blocked */ }
-    if (root.SmartOptionsWatchlist) root.SmartOptionsWatchlist.set(root.SmartOptionsWatchlist.defaults ? root.SmartOptionsWatchlist.defaults() : []);
+    store.clear();
+    if (root.SmartOptionsWatchlist && root.SmartOptionsWatchlist.reset) root.SmartOptionsWatchlist.reset();
     changed(); toast('Cleared your imports and pins in this browser.', true);
   }
   function toast(msg, canUndo) {

@@ -19,7 +19,8 @@
       if (changed) changed(saved ? '' : null);
       return get();
     }
-    return {get, set, add: xs => set(get().concat(Array.isArray(xs) ? xs : [xs])), remove: t => set(get().filter(x => x !== String(t).toUpperCase()))};
+    function reset() { memory = null; try { storage.removeItem(KEY); } catch (e) { /* storage blocked */ } if (changed) changed(''); return get(); }
+    return {get, set, reset, defaults: () => normalize(defaults()), add: xs => set(get().concat(Array.isArray(xs) ? xs : [xs])), remove: t => set(get().filter(x => x !== String(t).toUpperCase()))};
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = {createWatchlist, normalize};
   if (!root.document) return;
@@ -56,7 +57,7 @@
     const now = new Date(), today = Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());
     const days = Math.round((date-today)/86400000);
     const text = days > 0 ? `${days}d` : days === 0 ? 'Today' : `${Math.abs(days)}d ago`;
-    return `<span class="ov-earn" title="${tooltip(r,'earnings','calendar days from viewer date')} · ${esc(r.ers || 'provider unavailable')}"><time>${esc(r.er.slice(5))}</time><b>${text}</b><small>${esc(r.ert || 'time n/a')}</small></span>`;
+    return `<span class="ov-earn" title="${tooltip(r,'earnings','calendar days from viewer date')} · ${esc(r.ers || 'provider unavailable')}"><time>${esc(r.er.slice(5))}</time><b>${text}</b><small${r.ert?'':' class="ov-dim"'}>${esc(r.ert || '—')}</small></span>`;
   }
   function analyst(r) {
     if (!r.rating && !finite(r.up)) return '<span title="Analyst rating and target unavailable from provider">—</span>';
@@ -78,7 +79,7 @@
       const change = id==='us10y' ? (find('us10y_bps_chg') || {}).v : finite(o.v)&&finite(o.prior) ? o.v-o.prior : null;
       const changeUnit = id==='us10y' ? 'bp' : unit==='%' ? 'pp' : 'pts';
       const payroll = find('payrolls');
-      const secondary = id==='unemployment' ? `Payrolls ${payroll ? signed(payroll.v,0)+'k · '+esc(payroll.period || 'period n/a') : 'unavailable'} · consensus unavailable` : id==='effective_fed_funds' ? (event ? `Next FOMC ${esc(event.scheduled_et.slice(0,10))} · ${Math.ceil((+new Date(event.scheduled_et)-Date.now())/86400000)}d` : 'Next FOMC unavailable') : 'Δ from previous observation';
+      const secondary = id==='unemployment' ? `Payrolls ${payroll ? signed(payroll.v,0)+'k · '+esc(payroll.period || 'period n/a') : 'unavailable'} · consensus unavailable` : id==='effective_fed_funds' ? (()=>{const lo=find('fed_target_lower'),hi=find('fed_target_upper');return lo&&hi&&finite(lo.v)&&finite(hi.v)?`Target ${fmt(lo.v)}–${fmt(hi.v)} · `:'';})()+(event ? `Next FOMC ${esc(event.scheduled_et.slice(0,10))} · ${Math.ceil((+new Date(event.scheduled_et)-Date.now())/86400000)}d` : 'Next FOMC unavailable') : 'Δ from previous observation';
       const title = `${o.provider || 'provider unavailable'} · ${o.series || id} · retrieved ${o.retrieved_at || 'unavailable'} · ${o.note || ''}`;
       return `<article class="ov-macro-item"><div class="ov-macro-label">${esc(label)} <span class="ov-status ${o.status==='ok'?'':'ov-warning'}">${esc(o.status)}</span></div><div class="ov-macro-number"><strong>${fmt(o.v,id==='vix'?2:2)}<small>${unit}</small></strong><span>${finite(change)?(change>0?'↑':change<0?'↓':'→')+' '+fmt(Math.abs(change),changeUnit==='bp'?0:2)+' '+changeUnit:'Δ unavailable'}</span></div>${spark(o.h)}<div class="ov-period">${esc(o.period || o.date || 'period unavailable')} <a href="${safeURL(o.url)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">${esc(o.series || 'Source')} ↗</a></div><div class="ov-secondary" title="${esc(id==='unemployment' && payroll ? `${payroll.provider} · ${payroll.series} · ${payroll.unit} · retrieved ${payroll.retrieved_at}` : secondary)}">${secondary}${id==='effective_fed_funds'&&event?` <a href="${safeURL(event.source_url)}" target="_blank" rel="noopener noreferrer" title="FOMC official calendar">↗</a>`:''}</div></article>`;
     }).join('');
@@ -110,19 +111,26 @@
     $('#ov-macro').innerHTML=macro();
     $('#ov-datalist').innerHTML=d.rows.map(r=>`<option value="${esc(r.t)}">${esc(r.n)}</option>`).join('');
     lastData=d.exported_at;
+    if(!page.hidden) probe();
   }
   function show(on) {
     document.body.classList.toggle('so-overview',on);
     page.hidden=!on;
     if(on){api.showTab('overview'); render();}
     $('#ov-tab').classList.toggle('on',on);
-    if(on) requestAnimationFrame(()=>{page.style.setProperty('--ov-height',`${Math.max(300,innerHeight-page.getBoundingClientRect().top)}px`);});
+    if(on) requestAnimationFrame(()=>{page.style.setProperty('--ov-height',`${Math.max(300,innerHeight-page.getBoundingClientRect().top)}px`);requestAnimationFrame(probe);});
+  }
+  // Layout probe for headless QA (read via --dump-dom): does the page fit the viewport, and how many rows are fully visible.
+  function probe() {
+    const sc=page.querySelector('.ov-table-scroll'), bottom=sc.getBoundingClientRect().bottom;
+    page.dataset.fit=document.documentElement.scrollHeight<=innerHeight+1?'yes':'no';
+    page.dataset.visibleRows=[...page.querySelectorAll('#ov-tbody tr')].filter(tr=>tr.getBoundingClientRect().bottom<=bottom+1).length;
   }
   function openTicker(t) { show(false); api.showTab('markets'); api.select('t',t); }
   function mount() {
     api=root.SO2;
     root.SmartOptionsWatchlist=createWatchlist(localStorage,()=>api.D().rows.filter(r=>r.sam&&finite(r.sam.opp)).sort((a,b)=>b.sam.opp-a.sam.opp||a.t.localeCompare(b.t)).slice(0,25).map(r=>r.t),notice);
-    const tab=document.createElement('button');tab.id='ov-tab';tab.textContent='Overview';tab.dataset.tab='overview';$('#tabs').prepend(tab);
+    const tab=document.createElement('button');tab.id='ov-tab';tab.textContent='Overview';tab.dataset.tab='overview';{const fl=$('#fl-tab');if(fl)fl.after(tab);else $('#tabs').prepend(tab);}
     const analyst=$('#tabs [data-tab="markets"]');if(analyst) analyst.textContent='Analyst';
     page=document.createElement('main');page.id='pg-overview';page.hidden=true;
     page.innerHTML=`<section class="ov-watch"><div class="ov-toolbar"><div><h1>Watchlist <span id="ov-count"></span></h1><p>Price & fundamentals · Sam’s top 25 Opportunity scores, SmartOptions snapshot 2026-07-25</p></div><div class="ov-tools"><input id="ov-search" type="search" aria-label="Filter watchlist" placeholder="Filter watchlist"><form id="ov-add"><input id="ov-symbol" aria-label="Ticker to pin" list="ov-datalist" placeholder="Pin ticker" maxlength="15"><datalist id="ov-datalist"></datalist><button type="submit" title="Pin ticker to watchlist">+</button></form><button id="ov-add-data">Add data</button></div></div><div id="ov-warning" role="status"></div><div class="ov-table-scroll"><table id="ov-table"><thead id="ov-thead"></thead><tbody id="ov-tbody"></tbody></table><div id="ov-empty" hidden>No matching watchlist symbols. Pin a ticker or add a file.</div></div></section><section class="ov-macro-section"><div class="ov-section-label">Macro context <span>Observation periods shown · source details on hover · changes are not trading signals</span></div><div id="ov-macro"></div></section><footer class="ov-foot">Snapshot data, not live quotes · missing = unavailable · educational analysis <span id="ov-local-status">Your imports stay in this browser</span></footer>`;

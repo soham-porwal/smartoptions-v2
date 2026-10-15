@@ -99,3 +99,17 @@ test('summary rule text and counts are consistent', () => {
   const s = a.summary; assert.equal(s.counted, s.bullish + s.bearish + s.neutral + s.overbought + s.oversold);
   assert.match(s.rule, /net/);
 });
+
+test('practitioner (G. Mundada) rows: labelled, intraday never faked, breakout needs volume', () => {
+  const a = T.analyze(RANGE, {});
+  const g = a.rows.filter(r => r.group.startsWith('Practitioner'));
+  assert.ok(g.length >= 5);
+  for (const r of g) if (r.signal !== 'n/a') assert.match(r.rule, /practitioner convention - G\. Mundada/);
+  assert.equal(row(a, 'g_intraday').signal, 'n/a');
+  // flat range then a break on the last bar: confirmed only with a volume spike
+  const mk = spike => days(120).map((d, i) => { const c = i < 119 ? 100 + Math.sin(i) : 110; return [d, c - 0.2, c + 0.5, c - 0.5, c, i === 119 ? spike : 1e6]; });
+  assert.equal(row(T.analyze(mk(3e6), {}), 'g_brk').signal, 'bullish');
+  assert.equal(row(T.analyze(mk(1.1e6), {}), 'g_brk').signal, 'neutral');
+  assert.match(row(T.analyze(mk(1.1e6), {}), 'g_brk').text, /did not confirm/);
+  assert.equal(row(T.analyze(CLOSES, {}), 'g_sr').signal, 'n/a');
+});

@@ -85,7 +85,7 @@
       const payroll = find('payrolls');
       const secondary = id==='unemployment' ? `Payrolls ${payroll ? signed(payroll.v,0)+'k · '+esc(payroll.period || 'period n/a') : 'unavailable'} · consensus unavailable` : id==='effective_fed_funds' ? (()=>{const lo=find('fed_target_lower'),hi=find('fed_target_upper');return lo&&hi&&finite(lo.v)&&finite(hi.v)?`Target ${fmt(lo.v)}–${fmt(hi.v)} · `:'';})()+(event ? `Next FOMC ${esc(event.scheduled_et.slice(0,10))} · ${Math.ceil((+new Date(event.scheduled_et)-Date.now())/86400000)}d` : 'Next FOMC unavailable') : 'Δ from previous observation';
       const title = `${o.provider || 'provider unavailable'} · ${o.series || id} · retrieved ${o.retrieved_at || 'unavailable'} · ${o.note || ''}`;
-      return `<article class="ov-macro-item"><div class="ov-macro-label">${esc(label)} <span class="ov-status ${o.status==='ok'?'':'ov-warning'}">${esc(o.status)}</span></div><div class="ov-macro-number"><strong>${fmt(o.v,id==='vix'?2:2)}<small>${unit}</small></strong><span>${finite(change)?(change>0?'↑':change<0?'↓':'→')+' '+fmt(Math.abs(change),changeUnit==='bp'?0:2)+' '+changeUnit:'Δ unavailable'}</span></div>${spark(o.h)}<div class="ov-period">${esc(o.period || o.date || 'period unavailable')} <a href="${safeURL(o.url)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">${esc(o.series || 'Source')} ↗</a></div><div class="ov-secondary" title="${esc(id==='unemployment' && payroll ? `${payroll.provider} · ${payroll.series} · ${payroll.unit} · retrieved ${payroll.retrieved_at}` : secondary)}">${secondary}${id==='effective_fed_funds'&&event?` <a href="${safeURL(event.source_url)}" target="_blank" rel="noopener noreferrer" title="FOMC official calendar">↗</a>`:''}</div></article>`;
+      return `<article class="ov-macro-item"><div class="ov-macro-label">${esc(label)} <span class="ov-status ${o.status==='ok'?'':'ov-warning'}">${esc(o.status)}</span></div><button class="ov-macro-drill" data-macro-series="${id}" aria-label="Explore ${esc(label)} history and market relationships"><span class="ov-macro-number"><strong>${fmt(o.v,id==='vix'?2:2)}<small>${unit}</small></strong><span>${finite(change)?(change>0?'↑':change<0?'↓':'→')+' '+fmt(Math.abs(change),changeUnit==='bp'?0:2)+' '+changeUnit:'Δ unavailable'}</span></span>${spark(o.h)}</button><div class="ov-period">${esc(o.period || o.date || 'period unavailable')} <a href="${safeURL(o.url)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">${esc(o.series || 'Source')} ↗</a></div><div class="ov-secondary" title="${esc(id==='unemployment' && payroll ? `${payroll.provider} · ${payroll.series} · ${payroll.unit} · retrieved ${payroll.retrieved_at}` : secondary)}">${secondary}${id==='effective_fed_funds'&&event?` <a href="${safeURL(event.source_url)}" target="_blank" rel="noopener noreferrer" title="FOMC official calendar">↗</a>`:''}</div></article>`;
     }).join('');
     const local = root.SmartOptionsImport && root.SmartOptionsImport.getData();
     if (local && local.series) for (const s of local.series) {
@@ -97,6 +97,8 @@
   function render() {
     if (!page) return;
     const d=api.D(), list=root.SmartOptionsWatchlist.get(), byTicker=new Map(d.rows.map(r=>[r.t,r]));
+    const today = $('#ov-today');
+    if (today) today.innerHTML = root.SO2_flow ? root.SO2_flow.taskRow(d, false) : '<p>Market assessment loading. You can explore the watchlist below.</p>';
     const local=root.SmartOptionsImport && root.SmartOptionsImport.getData();
     const metrics=local&&local.metrics, extras=metrics ? metrics.columns.slice(0,4) : [];
     let rows=list.map(t=>byTicker.get(t)).filter(Boolean).filter(r=>(r.t+' '+r.n).toLowerCase().includes(query));
@@ -139,10 +141,13 @@
     page=document.createElement('main');page.id='pg-overview';page.hidden=true;
     page.innerHTML=`<section class="ov-watch"><div class="ov-toolbar"><div><h1>Watchlist <span id="ov-count"></span></h1><p>Price & fundamentals · Initially Sam’s top 25 Opportunity scores (2026-07-25). Select a ticker to explore; pin your own names.</p></div><div class="ov-tools"><input id="ov-search" type="search" aria-label="Filter watchlist" placeholder="Filter watchlist"><form id="ov-add"><input id="ov-symbol" aria-label="Ticker to pin" list="ov-datalist" placeholder="Pin ticker" maxlength="15"><datalist id="ov-datalist"></datalist><button type="submit" title="Pin ticker to watchlist">+</button></form><button id="ov-add-data">Add data</button></div></div><div id="ov-warning" role="status"></div><div class="ov-table-scroll"><table id="ov-table"><thead id="ov-thead"></thead><tbody id="ov-tbody"></tbody></table><div id="ov-empty" hidden>No matching watchlist symbols. Pin a ticker or add a file.</div></div></section><section class="ov-macro-section"><div class="ov-section-label">Macro context <span>Observation periods shown · source details on hover · changes are not trading signals</span></div><div id="ov-macro"></div></section><footer class="ov-foot">Snapshot data, not live quotes · missing = unavailable · educational analysis <span id="ov-local-status">Your imports stay in this browser</span> · <a href="legacy/index.html" target="_blank" rel="noopener">Original screener</a></footer>`;
     $('#pg-markets').before(page);
+    page.insertAdjacentHTML('afterbegin', '<div id="ov-today"></div>');
     // Keep body class / page in step with whichever tab is on (Flow and app.js switch tabs without telling us).
     new MutationObserver(()=>{const on=tab.classList.contains('on');document.body.classList.toggle('so-overview',on);if(!on)page.hidden=true;}).observe(tab,{attributes:true,attributeFilter:['class']});
     $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;if(b.dataset.tab==='overview'){e.stopImmediatePropagation();show(true);}else show(false);},true);
     page.addEventListener('click',e=>{
+      const macro=e.target.closest('[data-macro-series]');if(macro){const id=macro.dataset.macroSeries;if(root.SmartOptionsExplore && root.SmartOptionsExplore.factor)root.SmartOptionsExplore.factor(id);else{show(false);api.showTab('markets');api.select('s',id);}return;}
+      const task=e.target.closest('[data-task]');if(task && root.SO2_flow){root.SO2_flow.launchTask(task.dataset.task, task);return;}
       if(e.target.closest('.ov-analyst-why')) return;
       const unpin=e.target.closest('[data-unpin]');if(unpin){root.SmartOptionsWatchlist.remove(unpin.dataset.unpin);return;}
       const th=e.target.closest('[data-sort]');if(th){const key=th.dataset.sort;sort={key,dir:sort.key===key?-sort.dir:key==='t'||key==='er'?1:-1};render();return;}
@@ -153,8 +158,9 @@
     $('#ov-add').addEventListener('submit',e=>{e.preventDefault();const t=$('#ov-symbol').value.trim().toUpperCase();if(!api.D().rows.some(r=>r.t===t)){notice('Ticker is not in this dashboard’s sourced universe.');return;}root.SmartOptionsWatchlist.add(t);$('#ov-symbol').value='';});
     $('#ov-add-data').addEventListener('click',()=>root.SmartOptionsImport ? root.SmartOptionsImport.open() : notice('Import is still loading.'));
     root.addEventListener('so:import',render);
+    root.addEventListener('so:flow-ready',render);
     root.addEventListener('resize',()=>{if(!page.hidden)page.style.setProperty('--ov-height',`${innerHeight-page.getBoundingClientRect().top}px`);});
-    root.SmartOptionsOverview={render,show:()=>show(true),openTicker};
+    root.SmartOptionsOverview={render,show:()=>show(true),openTicker,compare:()=>{query='';sort={key:'pef',dir:1};$('#ov-search').value='';show(true);$('#ov-warning').textContent='Comparing your watchlist by forward P/E, low to high. Missing values appear last; open a company for context.';const heading=$('#ov-thead button[data-sort="pef"]');if(heading)heading.focus();}};
     render(); show(defaultLanding || initialHash.get('tab')==='overview');
     setInterval(()=>{if(lastData!==api.D().exported_at)render();},5000);
     root.dispatchEvent(new CustomEvent('so:overview-ready'));

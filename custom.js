@@ -413,8 +413,10 @@ const API = {
   set_chart: (sym, overlay, range) => {
     const a = A(), r = API.select(sym);
     if (overlay != null) {
-      const o = OV_IN[String(overlay).toLowerCase()] !== undefined ? OV_IN[String(overlay).toLowerCase()] : (a.OVERLAYS.some(x => x[0] === overlay) ? overlay : null);
+      const raw = String(overlay), symbol = raw.toUpperCase();
+      const o = OV_IN[raw.toLowerCase()] !== undefined ? OV_IN[raw.toLowerCase()] : (a.rowOf(symbol) ? symbol : (a.obsOf(raw) || a.OVERLAYS.some(x => x[0] === raw) ? raw : null));
       if (o == null) throw new Error(`unknown overlay "${overlay}"; valid: ${a.OVERLAYS.map(x => x[0] || 'none').join(', ')}`);
+      if (![...$('#overlay').options].some(x => x.value === o)) $('#overlay').add(new Option(o, o));
       a.V.overlay = o; $('#overlay').value = o;
     }
     if (range) {
@@ -431,11 +433,13 @@ const API = {
   describe: () => {
     const a = A(), hid = hiddenSet(a.S()), act = a.activeCols().map(c => c.k);
     return {
+      navigation: {analyst: 'select(ticker) opens the Analyst chart and detail view; its internal tab id is markets', macro: 'select(series_id) opens a macro series chart and source detail in Analyst', ticker_tabs: ['overview', 'technicals', 'strategies']},
+      watchlist: window.SmartOptionsWatchlist ? window.SmartOptionsWatchlist.get() : [],
       panels: PANELS.map(p => ({id: p.id, label: p.h, visible: !hid.has(p.id)})),
       columns: a.COLS.map(c => ({id: c.k, label: c.h, visible: act.includes(c.k), tip: c.tip || ''})),
       presets: {workflows: WORKFLOWS.map(w => ({id: w.id, label: w.h})), table: a.PRESETS.map(x => x.id), columns: COLSETS.map(x => 'cols:' + x.id), workspaces: Object.keys(wsAll())},
       filter_keys: Object.keys(FILTER_IN).concat(['sector', 'sets (["A"] only)', 'reset']),
-      overlays: a.OVERLAYS.map(x => x[0] || 'none'), ranges: RANGES,
+      overlays: a.OVERLAYS.map(x => x[0] || 'none'), overlay_note: 'Any loaded ticker or macro series id is also supported; the overlay uses a separate left scale, not normalized performance', ranges: RANGES,
     };
   },
 };

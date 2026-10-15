@@ -364,6 +364,7 @@ function render(el, base) {
   el.innerHTML = `<div class="st">
     <div class="st-head"><b>${esc(base.ticker)} strategy ideas</b> <span class="dim">price ${isNum(base.price) ? base.price : 'n/a'} · ${esc(pv.price || '')} · IV ${isNum(base.iv) ? base.iv + '%' : 'missing'} · r ${esc(pv.r || '')}</span></div>
     <div class="st-warn">Every premium, strike and probability here is a ${esc(MODEL_LABEL)}. Education only: not a recommendation to trade.${isNum(base.iv) ? '' : ' <b>No IV is stored for this ticker</b>, so option payoffs are not estimated.'}</div>
+    <p class="dim">Editable scenario assumptions below. Defaults describe a comparison, not an investment opinion. Payoff amounts are per share; multiply by the contract multiplier (usually 100 for standard US equity options). Model probabilities are conditional on the pricing assumptions, not validated success rates.</p>
     <div class="st-form">Stance ${sel('stance', ['bullish', 'neutral', 'bearish'])} Horizon <input type="number" min="1" max="730" data-f="horizon_days" value="${esc(f.horizon_days)}"> days · Risk tolerance ${sel('risk_tolerance', ['low', 'medium', 'high'])}
       <button class="st-btn" data-act="rules">${UI.showRules ? 'Hide' : 'Show'} scoring rules</button> <button class="st-btn" data-act="lib">${UI.showLib ? 'Hide' : 'Browse'} full library (${LIB.length})</button></div>
     <div class="st-ins">${inputsHtml}${rec.missing.length ? ` <span class="dim">missing inputs are skipped by their rules: ${esc(rec.missing.join(', '))}</span>` : ''}</div>

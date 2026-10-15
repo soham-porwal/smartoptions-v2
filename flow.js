@@ -212,7 +212,40 @@
   }
 
   function loadRules(storage) { try { return Object.assign({}, DEFAULT_RULES, JSON.parse(storage.getItem(RKEY) || '{}')); } catch (e) { return Object.assign({}, DEFAULT_RULES); } }
-  const core = {DEFAULT_RULES, sma, realizedVol, pctRank, chgN, pctChgN, moveZ, median, marketInputs, marketVerdict, shakers, upcoming, volInputs, volVerdict, sectorPE, nameDrivers, nameVerdict, playbook, loadRules};
+  // Restate existing measured verdicts; this adds no score, signal, or recommendation.
+  function launcherAssessment(D, rules) {
+    const r = rules || DEFAULT_RULES, mi = marketInputs(D, r), mv = marketVerdict(mi, r);
+    const vi = volInputs(D), vv = volVerdict(vi, r);
+    const covered = mv.n > 0 && mv.n >= Math.max(1, r.minInputs);
+    const market = covered ? ({'Lean bullish': 'Measured market inputs lean bullish', 'Lean bearish': 'Measured market inputs lean bearish', Neutral: 'Measured market inputs are mixed / neutral'}[mv.word] || 'The market assessment is unavailable') : 'Insufficient coverage for a market assessment';
+    const volatility = vv.word === 'Unknown' ? 'volatility data is unavailable' : `volatility is ${vv.word.toLowerCase()}${vv.trend ? ' and ' + vv.trend : ''}`;
+    const sources = mi.filter(i => fin(i.vote) && i.source).map(i => i.source).concat(vi.source ? [vi.source] : []);
+    const providers = [...new Set(sources.map(s => s.provider).filter(Boolean))];
+    const periods = [...new Set(sources.map(s => s.period).filter(Boolean))].sort();
+    return {text: `${market}; ${volatility}.`, covered, votes: mv.n, market: mv.word, volatility: vv.word,
+      session: D.asof_session || 'unavailable', periods, providers};
+  }
+  function peerDivergence(D) {
+    const groups = new Map();
+    const industries = new Map();
+    for (const r of D.rows || []) {
+      if (!r.sec || !fin(r.d1) || !r.pxd || r.pxd !== D.asof_session) continue;
+      if (!groups.has(r.sec)) groups.set(r.sec, []);
+      groups.get(r.sec).push(r);
+      if (r.ind) { if (!industries.has(r.ind)) industries.set(r.ind, []); industries.get(r.ind).push(r); }
+    }
+    const closePeers = [...industries.entries()].filter(([, rows]) => rows.length >= 3);
+    const compared = closePeers.length ? closePeers : [...groups.entries()];
+    const candidates = [];
+    for (const [sector, rows] of compared) {
+      if (rows.length < 3) continue;
+      const sorted = rows.slice().sort((a, b) => a.d1 - b.d1 || a.t.localeCompare(b.t));
+      const laggard = sorted[0], leader = sorted[sorted.length - 1];
+      if (leader.d1 > 0 && leader.d1 > laggard.d1) candidates.push({sector, laggard: laggard.t, leader: leader.t, laggardChange: laggard.d1, leaderChange: leader.d1, gap: leader.d1 - laggard.d1, date: D.asof_session, count: rows.length});
+    }
+    return candidates.sort((a, b) => b.gap - a.gap || a.sector.localeCompare(b.sector))[0] || null;
+  }
+  const core = {DEFAULT_RULES, sma, realizedVol, pctRank, chgN, pctChgN, moveZ, median, marketInputs, marketVerdict, shakers, upcoming, volInputs, volVerdict, sectorPE, nameDrivers, nameVerdict, playbook, loadRules, launcherAssessment, peerDivergence};
   if (typeof module !== 'undefined' && module.exports) module.exports = core;
   if (!root.document) return;
 
@@ -245,6 +278,44 @@
     M = {D, mi, mv, vi, vv, rows, shake: shakers(D), ev: upcoming(D, D.rows, Date.now(), 7, watchlist(D))};
   }
   function srcLine(s) { if (!s) return ''; return `${esc(s.provider || '')}${s.series ? ' · ' + esc(s.series) : ''}${s.period ? ' · as of ' + esc(s.period) : ''}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">source</a>` : ''}`; }
+  const TASKS = [['names', 'Check my companies', 'Watchlist companies and measured drivers'], ['fundamentals', 'Compare valuations', 'Watchlist sorted by forward P/E; valuation is one input, not a buy list'], ['movers', 'Screen moving companies', 'Sourced mover universe and company drivers'], ['events', 'Check event risk', 'Earnings-week screen and event checklist'], ['volatility', 'Inspect volatility', 'Volatility inputs, then conditional strategy alternatives'], ['question', 'Ask my own question', 'Open chat with an editable question; nothing is sent']];
+  function taskRow(D, compact) {
+    const s = launcherAssessment(D, loadRules(localStorage));
+    const dates = s.periods.length ? s.periods.length === 1 ? s.periods[0] : `${s.periods[0]}–${s.periods[s.periods.length - 1]}` : 'unavailable';
+    const peer = peerDivergence(D), watch = new Set(watchlist(D));
+    const earnings = (D.rows || []).filter(r => watch.has(r.t) && fin(r.ern) && r.ern >= 0 && r.ern <= 7).length;
+    let next = !s.covered ? ['inputs', 'Check the missing inputs before interpreting the market.'] : s.volatility === 'Stress' || s.volatility === 'Elevated' ? ['volatility', `Volatility is ${s.volatility.toLowerCase()}: examine what is priced in before exploring setups.`] : earnings ? ['events', `${earnings} watchlist ${earnings === 1 ? 'name reports' : 'names report'} within 7 days of the snapshot. Review the event risk.`] : ['names', 'Compare your companies against the measured market context.'];
+    const divergence = s.covered && peer && s.volatility !== 'Stress' ? `<div class="so-task-suggestion"><b>Another angle:</b> ${esc(peer.sector)} · ${esc(peer.leader)} ${peer.leaderChange > 0 ? '+' : ''}${peer.leaderChange.toFixed(1)}% vs ${esc(peer.laggard)} ${peer.laggardChange > 0 ? '+' : ''}${peer.laggardChange.toFixed(1)}% on ${esc(peer.date)} (Yahoo). Compare peer participation; a gap alone does not predict a catch-up. <button data-task="peers">Compare these peers →</button></div>` : '';
+    return `<section class="so-today${compact ? ' so-today-compact' : ''}" aria-label="Choose an investigation">${compact ? '' : '<p class="so-purpose">Start with a question about companies you follow. Find what changed, compare the evidence, and decide what needs more research. Pin your own names or import holdings below.</p>'}<div class="so-today-heading"><b>${compact ? 'Choose your next investigation' : 'Today'}</b><span>${esc(s.text)}</span></div><div class="so-today-meta" title="${esc(s.providers.join(' · ') || 'Sources unavailable')}">Session ${esc(s.session)} · input dates ${esc(dates)} · ${s.votes} measured votes · V2 heuristic; association, not a forecast. <button data-task="inputs">See inputs</button><button data-task="macro">Macro context</button></div><div class="so-task-suggestion"><b>First check:</b> ${esc(next[1])} <button data-task="${next[0]}">Open investigation →</button></div>${divergence}<div class="so-task-actions" aria-label="What do you want to investigate?">${TASKS.map(([id, label, title]) => `<button data-task="${id}" title="${esc(title)}">${label} <span aria-hidden="true">↗</span></button>`).join('')}</div><div class="so-task-status" role="status"></div></section>`;
+  }
+  function launchTask(id, origin) {
+    const status = origin && origin.closest('.so-today') && origin.closest('.so-today').querySelector('.so-task-status');
+    try {
+      if (id === 'names' || id === 'movers') { scope = id === 'names' ? 'watch' : 'movers'; step = 3; showFlow(); }
+      else if (id === 'inputs' || id === 'volatility') { step = id === 'inputs' ? 1 : 2; showFlow(); }
+      else if (id === 'macro') A.showTab('macro');
+      else if (id === 'fundamentals') { if (!root.SmartOptionsOverview) throw new Error('Overview is still loading. Try again.'); root.SmartOptionsOverview.compare(); }
+      else if (id === 'events') { root.SmartOptionsAPI.apply_preset('earnings'); }
+      else if (id === 'peers') {
+        const peer = peerDivergence(A.D());
+        if (!peer) throw new Error('Matching same-session peer returns are unavailable.');
+        if (root.SmartOptionsExplore && root.SmartOptionsExplore.peers) root.SmartOptionsExplore.peers(peer.laggard);
+        else { A.showTab('markets'); A.select('t', peer.laggard); }
+      }
+      else if (id === 'question') {
+        const chat = root.SmartOptionsChat;
+        if (!chat || !chat.open) throw new Error('Chat is still loading. Try again.');
+        if (chat.draft) chat.draft('Help me investigate a market question using the stored dashboard data. My question is: ');
+        else chat.open();
+      } else throw new Error('This investigation is unavailable.');
+      if (status) status.textContent = '';
+      return {task: id, opened: true};
+    } catch (error) {
+      console.warn('[task launchers] action unavailable', id, error.message);
+      if (status) status.textContent = error.message;
+      return {task: id, opened: false, error: error.message};
+    }
+  }
 
   function rail() {
     const {mv, vv, vi, rows, mi} = M;
@@ -342,6 +413,7 @@
     const panel = [pL1, pL2, pL3, pL4][step - 1]();
     page.innerHTML = `<nav class="fl-rail">${rail()}<div class="fl-railft"><button data-rules="toggle">Rules</button> <span class="dim">as of ${esc(M.D.asof_session)}</span></div></nav>
       <section class="fl-main"><div class="fl-guide"><span class="fl-guide-k">OPTIONAL MARKET REVIEW · ${step} OF 4</span><h1>${['Is the broad market supportive?', 'How much movement is priced in?', 'Which companies agree with the outlook?', 'Which conditional setups fit?'][step - 1]}</h1><p>${['One sample workflow. Jump to any tab, choose a task template, or ask chat to arrange a view for your current question.', 'Compare implied and realized volatility. This measures movement, not whether prices will rise.', 'Review your watchlist, compare the drivers, and open Why to see the inputs behind each verdict.', 'Match the market, company and volatility context. Open Strategies for the wider library and payoff models.'][step - 1]}</p></div>${rulesPanel()}${panel}<div class="fl-progress">${step > 1 ? `<button data-next-step="${step - 1}">← ${['Market', 'Volatility', 'Companies'][step - 2]}</button>` : ''}${step < 4 ? `<button class="fl-next" data-next-step="${step + 1}">Next: ${['Volatility', 'Companies', 'Strategy'][step - 1]} →</button>` : '<button data-go="markets">Explore a company in Analyst →</button>'}</div></section>`;
+    $('.fl-guide', page).insertAdjacentHTML('afterend', taskRow(M.D, true));
     fit();
   }
   // fill the viewport below header + tape (their heights vary with wrapping), desktop only
@@ -349,6 +421,7 @@
   function wire() {
     page.addEventListener('click', e => {
       const t = e.target;
+      const task = t.closest('[data-task]'); if (task) { launchTask(task.dataset.task, task); return; }
       const s = t.closest('[data-step], [data-next-step]'); if (s) { step = +(s.dataset.step || s.dataset.nextStep); render(); return; }
       const sc = t.closest('[data-scope]'); if (sc) { scope = sc.dataset.scope; render(); return; }
       const so = t.closest('[data-sort]'); if (so) { const k = so.dataset.sort; sort = {k, dir: sort.k === k ? -sort.dir : (k === 't' ? 1 : -1)}; render(); return; }
@@ -366,7 +439,7 @@
     });
   }
   function sync() { if (!page || !btn) return; const on = btn.classList.contains('on'); if (page.hidden === on) { page.hidden = !on; if (on) { const ov = $('#pg-overview'); if (ov) ov.hidden = true; render(); } } }
-  function showFlow() { A.showTab('flow'); ['#pg-markets', '#pg-macro', '#pg-overview'].forEach(s => { const el = $(s); if (el) el.hidden = true; }); sync(); }
+  function showFlow() { const wasOpen = btn.classList.contains('on'); A.showTab('flow'); ['#pg-markets', '#pg-macro', '#pg-overview'].forEach(s => { const el = $(s); if (el) el.hidden = true; }); sync(); if (wasOpen) render(); }
   function mount() {
     A = root.SO2; R = loadRules(localStorage);
     btn = document.createElement('button'); btn.dataset.tab = 'flow'; btn.id = 'fl-tab'; btn.textContent = 'Guide'; btn.title = 'Optional market-review template; use any view or task';
@@ -394,7 +467,8 @@
       api.show_flow = n => { step = Math.min(4, Math.max(1, +n || 1)); showFlow(); return {flow_step: step}; };
       api.__flow = true;
     }
-    root.SO2_flow = {render, showFlow, compute: () => { compute(); return M; }};
+    root.SO2_flow = {render, showFlow, compute: () => { compute(); return M; }, taskRow, launchTask, peerDivergence};
+    root.dispatchEvent(new CustomEvent('so:flow-ready'));
   }
   let userMoved = false, tries = 0;
   const timer = setInterval(() => { if (root.SO2_ready && root.SO2) { clearInterval(timer); try { mount(); } catch (e) { console.error('[R6 flow] mount failed', e); } } else if (++tries > 400) { clearInterval(timer); console.warn('[R6 flow] app data did not become ready'); } }, 20);

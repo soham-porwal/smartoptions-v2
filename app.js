@@ -18,6 +18,7 @@ let S = load();            // persisted settings
 let V = {sel: {kind: 't', id: 'SPY'}, sort: {k: 'd1', dir: -1}, preset: 'all', q: '', range: '3M', overlay: '', sector: null, tab: 'markets'};
 const pxCache = {};
 let chart = null, mainSeries = null, ovSeries = null;
+let chartDraw = 0;
 
 function load() {
   try { const s = JSON.parse(localStorage.getItem('so2-settings') || 'null'); if (s) return Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), s, {shock: Object.assign({}, DEFAULTS.shock, s.shock || {}), panels: Object.assign({order: null, hidden: []}, s.panels || {})}); } catch (e) {}
@@ -295,6 +296,12 @@ function ensureChart() {
     const av = a ? (a.value != null ? a.value : a.close) : null;
     legend(p.time, av, b ? b.value : null);
   });
+  chart.subscribeClick(p => {
+    if (!p || !p.time || !mainSeries) return;
+    const a = p.seriesData.get(mainSeries), b = ovSeries ? p.seriesData.get(ovSeries) : null;
+    window.dispatchEvent(new CustomEvent('so:chart-point', {detail: {selection: Object.assign({}, V.sel), time: p.time,
+      value: a && (a.value != null ? a.value : a.close), overlay: V.overlay, overlay_value: b && b.value}}));
+  });
 }
 let legendBase = '';
 function legend(t, a, b) {
@@ -310,6 +317,7 @@ const clean = arr => {
   out.sort((a, b) => a.time < b.time ? -1 : 1); return out;
 };
 async function drawChart() {
+  const draw = ++chartDraw;
   ensureChart();
   if (mainSeries) { chart.removeSeries(mainSeries); mainSeries = null; }
   if (ovSeries) { chart.removeSeries(ovSeries); ovSeries = null; }
@@ -317,6 +325,7 @@ async function drawChart() {
   let data = [], title = '', sub = '', chgHtml = '';
   if (sel.kind === 't') {
     const d = await px(sel.id);
+    if (draw !== chartDraw) return;
     data = d.bars.filter(b => isNum(b[4])).map(b => ({time: b[0], value: b[4]}));
     const r = rowOf(sel.id);
     title = sel.id; sub = r ? `${r.n || ''} · ${r.sec || ''}` : (sel.id === 'SPY' ? 'SPDR S&P 500 ETF' : '');
@@ -336,7 +345,8 @@ async function drawChart() {
   mainSeries = chart.addAreaSeries({lineColor: up ? '#00c805' : '#ff5000', topColor: up ? 'rgba(0,200,5,.18)' : 'rgba(255,80,0,.18)', bottomColor: 'rgba(0,0,0,0)', lineWidth: 2, priceLineVisible: false});
   mainSeries.setData(data);
   if (V.overlay && V.overlay !== sel.id) {
-    const od = clean(seriesData(V.overlay));
+    const od = rowOf(V.overlay) ? clean((await px(V.overlay)).bars.map(b => [b[0], b[4]])) : clean(seriesData(V.overlay));
+    if (draw !== chartDraw) return;
     ovSeries = chart.addLineSeries({color: '#6ea8fe', lineWidth: 1, priceScaleId: 'left', priceLineVisible: false, lastValueVisible: true});
     ovSeries.setData(od);
     chart.applyOptions({leftPriceScale: {visible: true}});
@@ -347,6 +357,7 @@ async function drawChart() {
   legend();
   setRange();
   evStrip();
+  window.dispatchEvent(new CustomEvent('so:chart-update', {detail: {selection: Object.assign({}, sel)}}));
 }
 function snapTime(data, d) { let best = null; for (const p of data) { if (p.time <= d) best = p.time; else break; } return best; }
 function markers(data) {

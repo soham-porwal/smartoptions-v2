@@ -20,7 +20,7 @@ function tile(o) {
   const vs = A.isNum(o.v) ? A.num(o.v, Math.abs(o.v) >= 1000 ? 0 : 2) : A.na(`${o.label}: ${o.status}${o.note ? ' · ' + o.note : ''}`);
   const stale = o.status && o.status !== 'ok';
   const tip = `${o.label}\n${o.provider} · ${o.series}\nperiod ${o.period} · retrieved ${o.retrieved_at || ''}\nstatus ${o.status}${o.note ? '\n' + o.note : ''}\nchart ${first} to ${last}`;
-  return `<div class="mc${stale ? ' stale' : ''}" data-s="${A.esc(o.id)}" data-tip="${A.esc(tip)}">
+  return `<div class="mc${stale ? ' stale' : ''}" role="button" tabindex="0" aria-label="Explore ${A.esc(o.label)} chart and sources" data-s="${A.esc(o.id)}" data-tip="${A.esc(tip)}">
     <div class="l">${A.esc(o.label)}</div>
     <div><span class="v">${vs}</span> <span class="dim">${A.esc(o.unit || '')}</span> ${A.pct(chg, 2, 'no prior', '')}${stale ? '<span class="stale-tag">stale</span>' : ''}</div>
     <div class="sub">${A.esc(o.period || '')}</div>${chartSvg(h, 200, 34)}</div>`;
@@ -80,7 +80,9 @@ window.SO2_macro = function () {
   if (!window.SO2) return;
   renderGrid(); renderHeatmap(); renderCal();
   if (wired) return; wired = true;
-  $('#mgrid').addEventListener('click', e => { const t = e.target.closest('[data-s]'); if (!t) return; window.SO2.showTab('markets'); window.SO2.select('s', t.dataset.s); });
+  function drill(e) { const t = e.target.closest('[data-s]'); if (!t) return; if(window.SmartOptionsExplore)window.SmartOptionsExplore.factor(t.dataset.s);else{window.SO2.showTab('markets');window.SO2.select('s',t.dataset.s);} }
+  $('#mgrid').addEventListener('click', drill);
+  $('#mgrid').addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){e.preventDefault();drill(e);} });
   $('#heatmap').addEventListener('click', e => {
     const c = e.target.closest('td[data-sec]'); if (!c) return;
     const A = window.SO2; A.V.sector = c.dataset.sec; A.V.preset = 'all';

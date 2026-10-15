@@ -492,7 +492,7 @@
   function ui_capabilities(m, args, ctx) {
     const api = ctx.api;
     if (!api) return {available: false, result: NOT_AVAILABLE};
-    const fns = Object.keys(UI_TOOLS).concat(['get_technicals', 'recommend_strategy', 'strategy_library']).filter(k => typeof api[k] === 'function');
+    const fns = Object.keys(UI_TOOLS).concat(['get_technicals', 'recommend_strategy', 'strategy_library', 'confidence_explain']).filter(k => typeof api[k] === 'function');
     let desc = null;
     try { desc = typeof api.describe === 'function' ? api.describe() : null; } catch (e) { desc = {error: String(e)}; }
     return {available: true, functions: fns, describe: desc};
@@ -511,7 +511,8 @@
   const DATA_TOOLS = {get_ticker, screen, get_macro, get_relations, get_calendar, get_regime, get_insights, scenario, ui_capabilities,
     get_technicals: (m,a,c) => apiData('get_technicals',[a.symbol],m,c),
     recommend_strategy: (m,a,c) => apiData('recommend_strategy',[a.symbol,a.options || {}],m,c),
-    strategy_library: (m,a,c) => apiData('strategy_library',[],m,c)};
+    strategy_library: (m,a,c) => apiData('strategy_library',[],m,c),
+    get_confidence: (m,a,c) => apiData('confidence_explain',[a.symbol],m,c)};
 
   async function runTool(name, input, model, ctx) {
     try {
@@ -539,6 +540,7 @@
     {name: 'get_technicals', description: 'Stored technical indicators, trend regime, methods, inputs and as-of for a ticker. Missing stays missing.', input_schema: S({symbol:{type:'string'}},['symbol'])},
     {name: 'recommend_strategy', description: 'Rank conditional educational strategy fits for a ticker from documented scoring rules; returns inputs, provenance and model estimates, never market quotes or orders.', input_schema: S({symbol:{type:'string'}, options:S({stance:{type:'string',enum:['bullish','neutral','bearish']},horizon_days:{type:'integer',minimum:1,maximum:365},risk_tolerance:{type:'string',enum:['low','medium','high']},top:{type:'integer',minimum:5,maximum:8}})},['symbol'])},
     {name: 'strategy_library', description: 'Educational strategy library: view, fit, risks, payoff formulas and assignment caveats.', input_schema:S({})},
+    {name: 'get_confidence', description: 'Explain a ticker evidence-support score, every component, weight, rule and dated input. This heuristic score measures signal agreement and data quality, NOT a calibrated probability of profit or forecast accuracy.', input_schema:S({symbol:{type:'string'}},['symbol'])},
     {name: 'open_ticker_tab', description: 'UI: show a ticker Overview, Technicals or Strategies tab. Use when asked to show strategies for a ticker.', input_schema:S({symbol:{type:'string'},tab:{type:'string',enum:['overview','technicals','strategies']}},['symbol','tab'])},
     {name: 'get_ticker', description: 'All dashboard fields for one ticker with provenance: price/returns, valuation, analyst, earnings date, ATM IV, Sam snapshot scores, macro sensitivities, last-session attribution, delayed quote. Use cite_map ids.',
       input_schema: S({symbol: {type: 'string'}}, ['symbol'])},
@@ -593,6 +595,7 @@
       '10. A source marker does not make an interpretation true. Preserve the ticker, field, unit and observation date from the tool. Do not present predictions or model estimates as facts or certainty. Use explicit conditional language for scenarios. Copy or round returned numbers; do not silently derive new figures.',
       '11. The main company view is labeled Analyst in the dashboard (markets internally). To open Analyst for AAPL, call select with symbol AAPL. open_ticker_tab chooses Overview, Technicals or Strategies within that view; Analyst itself is not a ticker tab.',
       '12. Answer only the question asked. If a future price, consensus or missing field is unavailable, say not in the data without padding the answer with unrelated figures. Never infer a future catch-up merely because peers moved earlier.',
+      '13. For a broad decision or strategy question, distill the measured market backdrop, company fundamentals, conditional scenarios, strategy alternatives and invalidating evidence. Use get_confidence when discussing confidence and explain its component math. Its score is evidence support, NOT odds of success; predictive confidence and a demonstrated trading edge require out-of-sample validation not supplied here. Ask briefly for missing ticker, horizon or risk constraints when those change the comparison. For a direct factual question, just answer it.',
     ].join('\n');
   }
 
@@ -662,6 +665,7 @@
   function apiError(status, body) {
     const type = body && body.error && body.error.type;
     const msg = body && body.error && body.error.message;
+    if (type === 'demo_proxy_error') return msg || 'The temporary demo relay is unavailable. Try your own key.';
     if (status === 401 || type === 'authentication_error') return 'API key rejected (401). Open Settings and paste a valid Anthropic API key.';
     if (status === 403 || type === 'permission_error') return 'This key is not allowed to use that model (403). Try another model or key.';
     if (status === 429 || type === 'rate_limit_error') return 'Rate limited by Anthropic (429). Wait a moment and ask again.';
@@ -680,7 +684,7 @@
     if (demo) body = Object.assign({}, body, {model: demo.model, max_tokens: Math.min(body.max_tokens || 1024, 1024)});
     try {
       r = await safeFetch(url, {method: 'POST', headers, body: JSON.stringify(body)});
-    } catch (e) { throw new Error((demo ? 'Demo connection unavailable. Try again or connect your own key. ' : 'Network error reaching Anthropic. ') + (e && e.message || e)); }
+    } catch (e) { throw new Error((demo ? 'Demo connection unavailable. Turn on Tailscale and allow local-network access for this site in your browser, then try again. Your key connects directly without Tailscale. ' : 'Network error reaching Anthropic. ') + (e && e.message || e)); }
     let data = null;
     try { data = await r.json(); } catch (e) { data = null; }
     if (!r.ok || (data && data.type === 'error')) throw new Error(apiError(r.status, data));
@@ -783,7 +787,7 @@
   }
 
   // ---------------------------------------------------------------- DOM panel
-  const SUGGESTED = ['Which names have the best risk-adjusted setups today and why?', 'Show strategies for AMZN', 'Why is the market lean bullish?', 'Which names get hurt most if 10Y +25bp?'];
+  const SUGGESTED = ['Distill the market backdrop: what changed, what matters, and what is uncertain?', 'Build an evidence brief for AAPL: fundamentals, scenarios, strategy alternatives, confidence and what would change the thesis.', 'Arrange the dashboard to compare my watchlist and explain the strongest evidence.'];
 
   function store() { try { return root.localStorage; } catch (e) { return null; } }
   function getKey() { const s = store(); return s ? s.getItem(LS_KEY) || '' : ''; }
@@ -829,7 +833,7 @@
       const parts = [];
       parts.push(dataErr ? 'data: ' + dataErr.message : dataModel ? 'data: session ' + dataModel.asof_session + ', ' + Object.keys(dataModel.tickers).length + ' tickers' : 'data: loading');
       const demo = !getKey() && activeDemo();
-      parts.push(getKey() ? 'your key: connected' : demo ? 'Demo connected · expires ' + new Date(demo.expires_at).toLocaleString() : 'key: not set');
+      parts.push(getKey() ? 'your key: saved' : demo ? 'Demo ready via Tailscale · expires ' + new Date(demo.expires_at).toLocaleString() : 'key: not set');
       st.textContent = parts.join('  |  ');
       $('.soc-key-hint').hidden = !!getKey() || !!demo;
       sel.disabled = !!demo;

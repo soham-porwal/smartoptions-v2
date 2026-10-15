@@ -201,7 +201,10 @@ html.light [fill="#6b757f"]{fill:var(--fg3)}
 html.light [stroke="#232a31"],html.light [stroke="#2c343c"]{stroke:var(--line)}
 html.light [fill="#3a434c"]{fill:#c4cbd2}
 @media (max-width:820px){
-  .hsel select{max-width:96px;font-size:11px}
-  .hbtns{gap:3px}
-  #hdr{overflow-x:auto}
+  #hdr{flex-wrap:wrap;height:auto;padding:4px 8px;row-gap:4px}
+  .hsel{order:5;width:100%}
+  .hsel select{flex:1;max-width:none;font-size:12px}
+  .hbtns{gap:3px;margin-left:auto}
+  .drawer{top:0}
+  table.usercols .ph{display:table-cell}
 }

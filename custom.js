@@ -39,6 +39,7 @@ function layout() {
   const S = a.S(), o = order(S), hid = hiddenSet(S);
   document.documentElement.classList.toggle('light', S.theme === 'light');
   document.documentElement.classList.toggle('comfy', S.density === 'comfortable');
+  $('#tbl').classList.toggle('usercols', Array.isArray(S.cols) && S.cols.length > 0);   // phone: show chosen columns instead of the default trim
   for (const p of PANELS) document.querySelectorAll(p.el).forEach(el => {
     el.classList.toggle('pan-off', hid.has(p.id));
     el.style.order = (p.g === 'cols' && !desktop()) ? '' : String(10 + o.indexOf(p.id));

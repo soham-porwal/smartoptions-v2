@@ -329,6 +329,8 @@ async function drawChart() {
     title = (D.tape.find(x => x.id === sel.id) || {}).label || (o ? o.label : seriesLabel(sel.id));
     sub = o ? `${o.label} · ${o.provider} ${o.series} · ${o.unit}` : seriesLabel(sel.id);
     chgHtml = o ? `${num(o.v, 2)} <span class="dim">${esc(o.period || '')}</span>` : (data.length ? num(data[data.length - 1].value, 2) : na('no data'));
+    // regime history (partial) can end before the session the tape score is for: say so instead of showing two numbers silently
+    if (sel.id === 'regime' && data.length) { const tv = (D.tape.find(x => x.id === 'regime') || {}).v; chgHtml = `${num(data[data.length - 1].value, 0)} <span class="dim">history last ${esc(data[data.length - 1].time)}${isNum(tv) ? ` · tape score ${tv} (session ${esc(D.asof_session)})` : ''}</span>`; }
   }
   const up = data.length > 1 && data[data.length - 1].value >= data[0].value;
   mainSeries = chart.addAreaSeries({lineColor: up ? '#00c805' : '#ff5000', topColor: up ? 'rgba(0,200,5,.18)' : 'rgba(255,80,0,.18)', bottomColor: 'rgba(0,0,0,0)', lineWidth: 2, priceLineVisible: false});
@@ -384,7 +386,8 @@ function evStrip() {
 
 /* ---------- signals ---------- */
 function renderSignals() {
-  $('#signals').innerHTML = (D.signals || []).map((s, i) => `<div class="sr" data-sig="${i}"><span class="k">${esc(s.kind)}</span>${esc(s.text)}</div>`).join('') || '<div class="sr dim">no signals</div>';
+  const m = (D.methods && D.methods.signals) || '';
+  $('#signals').innerHTML = (D.signals || []).map((s, i) => `<div class="sr" data-sig="${i}" data-tip="${esc((s.factor ? `${FLABEL[s.factor] || s.factor}: move ${s.move}${s.moveu || ''} over 20 sessions (macro history)\ncoef ${s.coef} · t ${s.tstat} (OLS, ${D.rel.window}) → implied ${s.implied}%\n` : '') + (typeof m === 'string' ? m : JSON.stringify(m)) + '\nassociation, not causation')}"><span class="k">${esc(s.kind)}</span>${esc(s.text)}</div>`).join('') || '<div class="sr dim">no signals</div>';
 }
 
 /* ---------- detail pane ---------- */
@@ -401,16 +404,16 @@ function stat(k, v, tip) { return `<div${tip ? ` data-tip="${esc(tip)}"` : ''}><
 function tickerDetail(r, d) {
   const g = [
     stat('Price', num(r.px, 2, stReason(r, 'price', 'price')), provTip(r, 'price')),
-    stat('1d / 5d', `${pct(r.d1, 2)} ${pct(r.d5, 1)}`),
-    stat('1M', pct(r.m1, 1)),
-    stat('P/E ttm', num(r.pe, 1, stReason(r, 'pe_trailing', 'trailing P/E'))),
-    stat('P/E fwd', num(r.pef, 1, stReason(r, 'pe_forward', 'forward P/E'))),
+    stat('1d / 5d', `${pct(r.d1, 2, stReason(r, 'chg', '1d change'))} ${pct(r.d5, 1, stReason(r, 'chg', '5d change'))}`, provTip(r, 'chg')),
+    stat('1M', pct(r.m1, 1, stReason(r, 'chg', '1M change')), provTip(r, 'chg')),
+    stat('P/E ttm', num(r.pe, 1, stReason(r, 'pe_trailing', 'trailing P/E')), fundTip(r, 'Trailing P/E')),
+    stat('P/E fwd', num(r.pef, 1, stReason(r, 'pe_forward', 'forward P/E')), fundTip(r, 'Forward P/E')),
     stat('PEG', num(r.peg, 2, stReason(r, 'peg', 'PEG')), r.pegm || ''),
-    stat('52w', isNum(r.lo) ? `${num(r.lo, 0)}–${num(r.hi, 0)}` : na('no range'), isNum(r.pct) ? `${r.pct.toFixed(0)}th pctile of range` : ''),
-    stat('Vol / 20d', isNum(r.vr) ? r.vr.toFixed(2) + 'x' : na(stReason(r, 'vol_ratio_20d', 'volume ratio'))),
-    stat('Beta (prov.)', num(r.beta, 2, stReason(r, 'beta_provider', 'beta'))),
+    stat('52w', isNum(r.lo) ? `${num(r.lo, 0)}–${num(r.hi, 0)}` : na('no range'), (isNum(r.pct) ? `${r.pct.toFixed(0)}th pctile of range\n` : '') + 'unadjusted 52-week high/low, Yahoo Finance via yfinance'),
+    stat('Vol / 20d', isNum(r.vr) ? r.vr.toFixed(2) + 'x' : na(stReason(r, 'vol_ratio_20d', 'volume ratio')), `session volume / 20-day avg volume, session ${r.pxd || 'n/a'}\nYahoo Finance via yfinance`),
+    stat('Beta (prov.)', num(r.beta, 2, stReason(r, 'beta_provider', 'beta')), `provider beta (not our regression)\nYahoo Finance via yfinance, retrieved ${r.rat || 'n/a'}`),
     stat('ATM IV', isNum(r.iv) ? r.iv.toFixed(1) + '%' : na('not fetched for this ticker'), r.ivs ? `${r.ivs}\nexpiry ${r.ivx} strike ${r.ivk}` : ''),
-    stat('Analyst', r.rating ? `${esc(String(r.rating).replace(/_/g, ' '))} <span class="sub">n${r.nan || ''}</span>` : na(stReason(r, 'analyst', 'analyst'))),
+    stat('Analyst', r.rating ? `${esc(String(r.rating).replace(/_/g, ' '))} <span class="sub">n${r.nan || ''}</span>` : na(stReason(r, 'analyst', 'analyst')), `Yahoo analyst recommendation, ${r.nan || '?'} analysts\nretrieved ${r.rat || 'n/a'}`),
     stat('Target', isNum(r.tgt) ? `${num(r.tgt, 0)} ${pct(r.up, 0)}` : na('no target'), 'Yahoo analyst mean target; consensus EPS not shown (no licensed source)'),
   ].join('');
   return `<div class="dh"><div class="big">${esc(r.t)} ${pct(r.d1, 2)}</div><div class="sub">${esc(r.n || '')} · ${esc(r.sec || '')} · ${esc(r.ind || '')}</div></div>

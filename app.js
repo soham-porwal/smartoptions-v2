@@ -194,11 +194,11 @@ function cell(r, c) {
       const badge = `<span class="badge${a ? ' a' : ''}" data-tip="${a ? 'A = top S&P 500 mover today' : ''}${a && b ? '\n' : ''}${b ? "B = in Sam's 2026-07-25 universe" : ''}">${a && b ? 'A+B' : a ? 'A' : 'B'}</span>`;
       return `<td class="l"><span class="tk" data-tip="${esc((r.n || '') + '\n' + (r.sec || '') + (r.ind ? ' · ' + r.ind : ''))}">${esc(r.t)}</span>${badge}</td>`;
     }
-    case 'd1': return `<td data-tip="${esc(provTip(r, 'chg'))}">${pct(r.d1, 2, stReason(r, 'chg', '1d change'))}</td>`;
+    case 'd1': return `<td class="${stl(r, 'chg')}" data-tip="${esc(provTip(r, 'chg'))}">${pct(r.d1, 2, stReason(r, 'chg', '1d change'))}</td>`;
     case 'px': return `<td data-tip="${esc(provTip(r, 'price'))}">${num(r.px, 2, stReason(r, 'price', 'price'))}</td>`;
     case 'spark': return `<td>${spark(r.spark, 56, 16)}</td>`;
-    case 'pef': return `<td class="ph">${num(r.pef, 1, stReason(r, 'pe_forward', 'forward P/E'))}</td>`;
-    case 'peg': return `<td class="ph" data-tip="${esc(r.pegm || '')}">${num(r.peg, 2, stReason(r, 'peg', 'PEG'))}</td>`;
+    case 'pef': return `<td class="ph${stl(r, 'pe_forward')}" data-tip="${esc(fundTip(r, 'Forward P/E'))}">${num(r.pef, 1, stReason(r, 'pe_forward', 'forward P/E'))}</td>`;
+    case 'peg': return `<td class="ph${stl(r, 'peg')}" data-tip="${esc(fundTip(r, 'PEG') + '\n' + (r.pegm || ''))}">${num(r.peg, 2, stReason(r, 'peg', 'PEG'))}</td>`;
     case 'pct': return `<td class="ph" data-tip="52w low ${r.lo} · high ${r.hi} · ${isNum(r.pct) ? r.pct.toFixed(0) + ' pctile' : ''}">${isNum(r.pct) ? `<span class="rng"><i style="left:${Math.max(0, Math.min(100, r.pct)) * .42}px"></i></span>` : na(stReason(r, 'range_52w', '52w range'))}</td>`;
     case 'ern': return `<td class="ph" data-tip="${esc((r.er || '') + ' ' + (r.ert || '') + '\n' + (r.ers || ''))}">${isNum(r.ern) ? r.ern + 'd' : na(stReason(r, 'earnings', 'earnings date'))}</td>`;
     case 'iv': return `<td class="ph" data-tip="${esc(r.ivs ? `${r.ivs}\nexpiry ${r.ivx}, strike ${r.ivk}${r.ivspan ? '\nexpiry spans earnings' : ''}` : '')}">${isNum(r.iv) ? r.iv.toFixed(1) : na('ATM IV only fetched for movers + nearest-earnings names (status: ' + ((r.st || {}).atm_iv || 'not fetched') + ')')}</td>`;
@@ -214,6 +214,9 @@ flags ${r.sam.flags || '-'}${r.sam.risk === 'AVOID' ? '\nAVOID -> his composite 
   }
   return '<td></td>';
 }
+function stl(r, f) { return r.st && r.st[f] === 'stale' ? ' stale' : ''; }
+function fundTip(r, what) { return `${what}: Yahoo Finance via yfinance
+retrieved ${r.rat || 'n/a'} · status ${(r.st && r.st[what === 'PEG' ? 'peg' : 'pe_forward']) || 'n/a'}`; }
 function provTip(r, k) {
   return k === 'price' ? `price ${r.px} close ${r.pxd}\nYahoo Finance via yfinance (unadjusted)` : `adj close vs prior adj close, session ${r.pxd}\nYahoo Finance via yfinance`;
 }

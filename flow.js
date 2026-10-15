@@ -341,7 +341,7 @@
     compute();
     const panel = [pL1, pL2, pL3, pL4][step - 1]();
     page.innerHTML = `<nav class="fl-rail">${rail()}<div class="fl-railft"><button data-rules="toggle">Rules</button> <span class="dim">as of ${esc(M.D.asof_session)}</span></div></nav>
-      <section class="fl-main"><div class="fl-guide"><span class="fl-guide-k">YOUR DAILY CHECK · ${step} OF 4</span><h1>${['Is the broad market supportive?', 'How much movement is priced in?', 'Which companies agree with the outlook?', 'Which conditional setups fit?'][step - 1]}</h1><p>${['Start with the market and next week’s catalysts. Then check volatility before selecting a company.', 'Compare implied and realized volatility. This measures movement, not whether prices will rise.', 'Review your watchlist, compare the drivers, and open Why to see the inputs behind each verdict.', 'Match the market, company and volatility context. Open Strategies for the wider library and payoff models.'][step - 1]}</p></div>${rulesPanel()}${panel}<div class="fl-progress">${step > 1 ? `<button data-next-step="${step - 1}">← ${['Market', 'Volatility', 'Companies'][step - 2]}</button>` : ''}${step < 4 ? `<button class="fl-next" data-next-step="${step + 1}">Next: ${['Volatility', 'Companies', 'Strategy'][step - 1]} →</button>` : '<button data-go="markets">Explore a company in Analyst →</button>'}</div></section>`;
+      <section class="fl-main"><div class="fl-guide"><span class="fl-guide-k">OPTIONAL MARKET REVIEW · ${step} OF 4</span><h1>${['Is the broad market supportive?', 'How much movement is priced in?', 'Which companies agree with the outlook?', 'Which conditional setups fit?'][step - 1]}</h1><p>${['One sample workflow. Jump to any tab, choose a task template, or ask chat to arrange a view for your current question.', 'Compare implied and realized volatility. This measures movement, not whether prices will rise.', 'Review your watchlist, compare the drivers, and open Why to see the inputs behind each verdict.', 'Match the market, company and volatility context. Open Strategies for the wider library and payoff models.'][step - 1]}</p></div>${rulesPanel()}${panel}<div class="fl-progress">${step > 1 ? `<button data-next-step="${step - 1}">← ${['Market', 'Volatility', 'Companies'][step - 2]}</button>` : ''}${step < 4 ? `<button class="fl-next" data-next-step="${step + 1}">Next: ${['Volatility', 'Companies', 'Strategy'][step - 1]} →</button>` : '<button data-go="markets">Explore a company in Analyst →</button>'}</div></section>`;
     fit();
   }
   // fill the viewport below header + tape (their heights vary with wrapping), desktop only
@@ -369,15 +369,15 @@
   function showFlow() { A.showTab('flow'); ['#pg-markets', '#pg-macro', '#pg-overview'].forEach(s => { const el = $(s); if (el) el.hidden = true; }); sync(); }
   function mount() {
     A = root.SO2; R = loadRules(localStorage);
-    btn = document.createElement('button'); btn.dataset.tab = 'flow'; btn.id = 'fl-tab'; btn.textContent = 'Flow'; btn.title = 'Top-down morning check: Market → Volatility → Names → Plan';
+    btn = document.createElement('button'); btn.dataset.tab = 'flow'; btn.id = 'fl-tab'; btn.textContent = 'Guide'; btn.title = 'Optional market-review template; use any view or task';
     $('#tabs').prepend(btn);
     page = document.createElement('main'); page.id = 'pg-flow'; page.className = 'fl-page'; page.hidden = true;
     $('#pg-markets').before(page);
     wire();
     window.addEventListener('resize', () => { clearTimeout(fit.t); fit.t = setTimeout(fit, 120); });
     new MutationObserver(sync).observe($('#tabs'), {attributes: true, subtree: true, attributeFilter: ['class'], childList: true});
-    // Flow is the default landing view. If R5's Overview mounts after us and claims landing, re-assert once.
-    if (landing || initialHash.get('tab') === 'flow') {
+    // Only open this sample guide when explicitly requested; Overview is the general workspace.
+    if (initialHash.has('fl') || initialHash.get('tab') === 'flow') {
       showFlow();
       let n = 0; const t = setInterval(() => { const ov = $('#ov-tab'); if (ov) { if (ov.previousElementSibling !== btn) $('#tabs').prepend(btn); if (!btn.classList.contains('on') && !userMoved) showFlow(); clearInterval(t); } else if (++n > 100) clearInterval(t); }, 30);
     }
@@ -390,7 +390,7 @@
     if (api && !api.__flow) {
       const ap = api.apply_preset, ds = api.describe;
       api.apply_preset = id => { const s = String(id || ''); if (s === 'flow:morning' || s === 'Flow: morning check') { step = 1; showFlow(); return {flow: 'morning check', step: 1}; } return ap(id); };
-      api.describe = () => { const d = ds(); try { d.presets.workflows.push({id: 'flow:morning', label: 'Flow: morning check (Market → Vol → Names → Plan)'}); } catch (e) { /* describe shape changed */ } return d; };
+      api.describe = () => { const d = ds(); try { d.presets.workflows.push({id: 'flow:morning', label: 'Market review template (optional)'}); } catch (e) { /* describe shape changed */ } return d; };
       api.show_flow = n => { step = Math.min(4, Math.max(1, +n || 1)); showFlow(); return {flow_step: step}; };
       api.__flow = true;
     }

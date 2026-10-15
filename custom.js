@@ -239,9 +239,9 @@ function wfWire() {
 function hdrSelects() {
   const wf = $('#wfSel'), ws = $('#wsSel'); if (!wf || !ws) return;
   const cur = lsGet(LS_WF, null);
-  wf.innerHTML = `<option value="">Workflow…</option>` + WORKFLOWS.map(w => `<option value="${w.id}"${w.id === cur ? ' selected' : ''}>${A().esc(w.h)}</option>`).join('');
+  wf.innerHTML = `<option value="">Task template…</option>` + WORKFLOWS.map(w => `<option value="${w.id}"${w.id === cur ? ' selected' : ''}>${A().esc(w.h)}</option>`).join('');
   const names = Object.keys(wsAll());
-  ws.innerHTML = `<option value="">Workspace…</option>` + names.map(n => `<option value="${A().esc(n)}">${A().esc(n)}</option>`).join('') + `<option value="__save">+ Save current…</option>`;
+  ws.innerHTML = `<option value="">Saved layout…</option>` + names.map(n => `<option value="${A().esc(n)}">${A().esc(n)}</option>`).join('') + `<option value="__save">+ Save current…</option>`;
 }
 function hdrWire() {
   $('#wfSel').addEventListener('change', e => { const v = e.target.value; if (v) wfApply(v); else { lsSet(LS_WF, null); wfRender(); } });

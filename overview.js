@@ -32,8 +32,8 @@
   const safeURL = u => /^https?:\/\//i.test(u || '') ? esc(u) : '#';
   let api, page, sort = {key:'opp', dir:-1}, query = '', lastData, status = '';
   const initialHash = new URLSearchParams(location.hash.slice(1));
-  // Flow (R6) owns default landing; Overview opens only when asked for (#tab=overview).
-  const defaultLanding = false;
+  // Start with the general workspace; explicit ticker/view links retain their chosen destination.
+  const defaultLanding = !initialHash.has('tab') && !initialHash.has('t') && !initialHash.has('s') && !initialHash.has('fl') && !initialHash.has('open');
   function notice(message, error) {
     if (message != null) status = message;
     if (error) console.warn('[R5 watchlist]', message, error.name);

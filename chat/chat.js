@@ -437,6 +437,9 @@
     hide_panels: a => ['hide_panels', [a.panels || []]],
     set_columns: a => ['set_columns', [a.columns || []]],
     apply_preset: a => ['apply_preset', [a.id]],
+    save_workspace: a => ['save_workspace', [a.name]],
+    load_workspace: a => ['load_workspace', [a.name]],
+    list_workspaces: () => ['list_workspaces', []],
     set_chart: a => ['set_chart', [a.symbol, a.overlay || null, a.range || null]],
     open_ticker_tab: a => ['open_ticker_tab', [a.symbol, a.tab]],
   };
@@ -519,6 +522,9 @@
     {name: 'hide_panels', description: 'UI: hide dashboard panels by id.', input_schema: S({panels: {type: 'array', items: {type: 'string'}}}, ['panels'])},
     {name: 'set_columns', description: 'UI: set visible table columns by id, in order.', input_schema: S({columns: {type: 'array', items: {type: 'string'}}}, ['columns'])},
     {name: 'apply_preset', description: 'UI: apply a saved layout preset by id.', input_schema: S({id: {type: 'string'}}, ['id'])},
+    {name: 'save_workspace', description: 'UI: save the current customized dashboard layout with the user-provided name.', input_schema: S({name: {type:'string'}}, ['name'])},
+    {name: 'load_workspace', description: 'UI: load a named saved workspace; list available workspaces first.', input_schema: S({name: {type:'string'}}, ['name'])},
+    {name: 'list_workspaces', description: 'UI: list available saved workspace names.', input_schema: S({})},
     {name: 'set_chart', description: 'UI: show a ticker chart with an optional macro overlay (factor or series id) and range (e.g. 3m, 1y).', input_schema: S({symbol: {type: 'string'}, overlay: {type: 'string'}, range: {type: 'string'}}, ['symbol'])},
   ];
 
@@ -536,6 +542,7 @@
       '6. Monthly/quarterly macro values carry their observation period; never imply they are new today.',
       '7. Be short: numbers first, then bullets or a compact markdown table. No essays, no preamble. State the criteria and method you used in one line.',
       '8. UI action tools change what the user sees on the dashboard. Use them when asked to organize, set up, filter or show something; call ui_capabilities first to learn the available panels/columns/presets. If a UI action returns "' + NOT_AVAILABLE + '", say so plainly.',
+      '9. Adapt the workspace to the current task. The Market → Volatility → Companies → Strategy guide is only one optional example, never a required sequence. Users can start with any company, event, comparison or strategy. Use filters, columns, panels and saved workspaces to suit their question. Save or restore a layout when asked.',
     ].join('\n');
   }
 

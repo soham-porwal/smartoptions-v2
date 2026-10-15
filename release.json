@@ -1,6 +1,6 @@
 {
   "schema": "smartoptions.release.v1",
-  "release_id": "2026-10-15-v2-chat-dock",
+  "release_id": "2026-10-15-v2-adaptive-workspace",
   "built_at": "2026-10-15T22:20:19.208557+00:00",
   "data_session": "2026-10-15",
   "tickers": 365,
@@ -19,5 +19,8 @@
   ],
   "chat_docked": true,
   "chat_demo_service": "not publicly connected; own-key mode available",
-  "chat_local_real_provider_check": "PASS: cited AAPL answer and column rearrangement; no key in browser"
+  "chat_local_real_provider_check": "PASS: cited AAPL answer and column rearrangement; no key in browser",
+  "default_view": "overview",
+  "guide": "optional market-review template",
+  "saved_layout_chat_tools": true
 }

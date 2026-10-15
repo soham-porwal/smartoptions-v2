@@ -32,7 +32,8 @@
     if (!value || value.enabled !== true) return null;
     let u;
     try { u = new URL(value.url); } catch (e) { return null; }
-    if (u.protocol !== 'https:' || !u.hostname.endsWith('.trycloudflare.com') || u.username || u.password || u.pathname !== '/v1/messages' || u.search || u.hash) return null;
+    const privateDemo = u.hostname === 'sohampc.tail9ff07b.ts.net' && u.port === '18891';
+    if (u.protocol !== 'https:' || !privateDemo || u.username || u.password || u.pathname !== '/v1/messages' || u.search || u.hash) return null;
     const expires = Date.parse(value.expires_at);
     if (!Number.isFinite(expires) || expires <= (now == null ? Date.now() : now)) return null;
     if (!MODELS.some(m => m.id === value.model)) return null;
@@ -101,6 +102,7 @@
       regime_hist: rel.regime_hist || [], vol_breadth: rel.vol_breadth || null, insights: rel.insights || [],
       signals: core.signals || [], methods: core.methods || {}, crosscheck: core.crosscheck || null,
       quotes: q ? q.quotes : {}, quotes_meta: q ? {generated_at: q.generated_at, session: q.session, source: q.source, method: q.method} : null,
+      benchmark: (core.tape || []).find(o=>o.id==='SPY') || null,
     };
   }
 
@@ -122,7 +124,7 @@
   }
 
   // ---------------------------------------------------------------- citations
-  function CiteRegistry() { this.list = []; this.byKey = {}; }
+  function CiteRegistry() { this.list = []; this.byKey = {}; this.evidence = {}; }
   CiteRegistry.prototype.add = function (c) {
     const e = {label: c.label || '', source: c.source || '', series: c.series == null ? null : String(c.series),
       as_of: c.as_of == null ? null : String(c.as_of), url: safeLink(c.url)};
@@ -133,6 +135,45 @@
     return e;
   };
   CiteRegistry.prototype.get = function (id) { return this.list[id - 1] || null; };
+  // Evidence comes from completed data tools, never from the model's answer,
+  // citation ids/labels or dashboard action metadata. Keep it separate from the
+  // citation object so it is not sent back to the provider as duplicated data.
+  CiteRegistry.prototype.bind = function (id, value) {
+    const cite = this.get(id); if (!cite) return;
+    const evidence = this.evidence[id] || (this.evidence[id] = {numbers: new Set(), dates: new Set()});
+    const skip = new Set(['cite', 'cite_id', 'cite_map', 'id', 'label', 'source', 'provider', 'url', 'source_url', 'series', 'symbol', 'name', 'method', 'description', 'field_status']);
+    function collect(v) {
+      if (typeof v === 'number' && Number.isFinite(v)) evidence.numbers.add(v);
+      else if (typeof v === 'string') {
+        for (const f of figuresIn(v)) {
+          if (/^\d{4}-\d{2}(?:-\d{2})?(?:T|$)/.test(f)) { evidence.dates.add(f); evidence.dates.add(f.slice(0, 10)); }
+          else { const n = figureValue(f); if (n) evidence.numbers.add(n.value); }
+        }
+      } else if (Array.isArray(v)) v.forEach(collect);
+      else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) if (!skip.has(k)) collect(x);
+    }
+    collect(value);
+    for (const d of (cite.as_of || '').match(ISO_FIG_RE) || []) { evidence.dates.add(d); evidence.dates.add(d.slice(0, 10)); }
+  };
+
+  function bindToolEvidence(name, out, registry) {
+    if (!registry || !out || out.error || name === 'ui_capabilities') return;
+    if (name === 'get_ticker') {
+      const groups = {
+        price_and_returns: ['price', 'price_date', 'chg_1d_pct', 'chg_5d_pct', 'chg_1m_pct', 'vol_ratio_20d', 'range_52w'],
+        fundamentals_analyst_earnings_iv: ['pe_trailing', 'pe_forward', 'peg', 'earnings', 'analyst', 'beta_provider', 'market_cap', 'atm_iv'],
+        sam_snapshot: ['sam_snapshot'], relations: ['relations', 'attribution_last_session'], delayed_quote: ['delayed_quote'],
+      };
+      for (const [group, fields] of Object.entries(groups)) if (out.cite_map && out.cite_map[group]) registry.bind(out.cite_map[group], fields.map(k => out[k]));
+    } else if (name === 'get_macro') {
+      // Do not let one macro series supply a different series' cited figure.
+      for (const row of out.observations || []) registry.bind(row.cite_id, [row, {series_count: out.series_count, as_of_session: out.as_of_session}]);
+      for (const c of out.cite || []) if (!(out.observations || []).some(o => o.cite_id === c.id)) registry.bind(c.id, out.trend);
+    } else {
+      for (const c of out.cite || []) registry.bind(c.id, out);
+      if (out.cite_id) registry.bind(out.cite_id, out);
+    }
+  }
   function safeLink(u) { return typeof u === 'string' && /^https?:\/\//i.test(u) ? u : null; }
 
   const yahooUrl = s => 'https://finance.yahoo.com/quote/' + encodeURIComponent(s);
@@ -178,7 +219,12 @@
   // ---------------------------------------------------------------- DATA tools
   function get_ticker(m, args, ctx) {
     const t = findTicker(m, args.symbol);
-    if (!t) return {error: 'not in the data: ' + args.symbol + ' is not in this dashboard (' + Object.keys(m.tickers).length + ' tickers loaded)'};
+    if (!t && String(args.symbol).toUpperCase()==='SPY' && m.benchmark) {
+      const b=m.benchmark, c=ctx.cite({label:'SPY stored market benchmark',source:b.src || 'Yahoo Finance via yfinance (delayed)',series:'SPY',as_of:m.asof_session,url:yahooUrl('SPY')});
+      return {symbol:'SPY',benchmark:true,price:b.v,price_date:m.asof_session,chg_1d_pct:b.chg,pe_forward:null,
+        note:'Stored benchmark price and return only. Future price forecasts and company fundamentals are not in this tool.',cite:[c],cite_id:c.id};
+    }
+    if (!t) return {error: 'not in the data: ' + args.symbol + ' has no company fundamentals row in this dashboard.'};
     const cp = citePrice(m, t, ctx), cf = citeFund(m, t, ctx);
     const out = {
       symbol: t.symbol, name: t.name, sector: t.sector, industry: t.industry,
@@ -470,8 +516,9 @@
   async function runTool(name, input, model, ctx) {
     try {
       if (DATA_TOOLS[name]) {
-        const out = DATA_TOOLS[name](model, input || {}, ctx);
-        return await out;
+        const out = await DATA_TOOLS[name](model, input || {}, ctx);
+        bindToolEvidence(name, out, ctx.registry);
+        return out;
       }
       if (UI_TOOLS[name]) {
         const [fn, argv] = UI_TOOLS[name](input || {});
@@ -515,7 +562,7 @@
     {name: 'scenario', description: 'What-if: impact % per ticker = sum(coefficient x shock) over the given factors; returns most hurt / most helped and a sector view. Historical association, not a forecast.',
       input_schema: S({shocks: shockSchema, top_n: {type: 'integer', description: 'default 10'}, apply_to_dashboard: {type: 'boolean', description: 'also push this scenario into the dashboard scenario panel'}}, ['shocks'])},
     {name: 'ui_capabilities', description: 'Which dashboard UI actions exist in this build, plus available panels/columns/presets.', input_schema: S({})},
-    {name: 'select', description: 'UI: open a ticker in the dashboard.', input_schema: S({symbol: {type: 'string'}}, ['symbol'])},
+    {name: 'select', description: 'UI: open a ticker in the main Analyst view. The visible Analyst view is also called markets internally; use select for requests to open Analyst on a company.', input_schema: S({symbol: {type: 'string'}}, ['symbol'])},
     {name: 'set_filters', description: 'UI: set the dashboard table filters (same keys as screen.filters).', input_schema: S({filters: {type: 'object'}}, ['filters'])},
     {name: 'set_scenario', description: 'UI: set the dashboard scenario panel shocks.', input_schema: S({shocks: shockSchema}, ['shocks'])},
     {name: 'show_panels', description: 'UI: show dashboard panels by id.', input_schema: S({panels: {type: 'array', items: {type: 'string'}}}, ['panels'])},
@@ -543,6 +590,9 @@
       '7. Be short: numbers first, then bullets or a compact markdown table. No essays, no preamble. State the criteria and method you used in one line.',
       '8. UI action tools change what the user sees on the dashboard. Use them when asked to organize, set up, filter or show something; call ui_capabilities first to learn the available panels/columns/presets. If a UI action returns "' + NOT_AVAILABLE + '", say so plainly.',
       '9. Adapt the workspace to the current task. The Market → Volatility → Companies → Strategy guide is only one optional example, never a required sequence. Users can start with any company, event, comparison or strategy. Use filters, columns, panels and saved workspaces to suit their question. Save or restore a layout when asked.',
+      '10. A source marker does not make an interpretation true. Preserve the ticker, field, unit and observation date from the tool. Do not present predictions or model estimates as facts or certainty. Use explicit conditional language for scenarios. Copy or round returned numbers; do not silently derive new figures.',
+      '11. The main company view is labeled Analyst in the dashboard (markets internally). To open Analyst for AAPL, call select with symbol AAPL. open_ticker_tab chooses Overview, Technicals or Strategies within that view; Analyst itself is not a ticker tab.',
+      '12. Answer only the question asked. If a future price, consensus or missing field is unavailable, say not in the data without padding the answer with unrelated figures. Never infer a future catch-up merely because peers moved earlier.',
     ].join('\n');
   }
 
@@ -550,12 +600,21 @@
   // A "figure" is a number that looks like data: has a decimal, %, $, a sign, a date, or >= 2 digits,
   // and is not part of a word (10Y, Q3, S&P 500, model names). A line (table row / bullet) or prose
   // sentence that contains a figure but no [n] marker is reported as uncited.
-  const FIG_RE = /(^|[^A-Za-z0-9_.\[\/-])([-+−]?\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?|[-+−]?\$?\d+(?:\.\d+)?)(%|bp|bps|x|pp)?(?![A-Za-z0-9\]])/g;
+  const FIG_RE = /(^|[^A-Za-z0-9_.\[\/-])([-+−]?\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?|[-+−]?\$?\d+(?:\.\d+)?)(%|bps?|x|pp|[KMBT]|\s+(?:thousand|million|billion|trillion))?(?![A-Za-z0-9\]])/g;
+  const ISO_FIG_RE = /\b\d{4}-\d{2}(?:-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?)?/g;
+  function figureValue(token) {
+    const m = String(token).replace(/−/g, '-').match(/^([-+]?\$?[\d,]+(?:\.\d+)?)(.*)$/);
+    if (!m) return null;
+    const raw = m[1].replace(/[$,]/g, ''), suffix = m[2].trim();
+    const scale = ({K: 1e3, M: 1e6, B: 1e9, T: 1e12, thousand: 1e3, million: 1e6, billion: 1e9, trillion: 1e12})[suffix] || 1;
+    const decimals = (raw.split('.')[1] || '').length;
+    return {value: Number(raw) * scale, tolerance: 0.5 * Math.pow(10, -decimals) * scale};
+  }
   function figuresIn(s) {
-    const clean = s.replace(/\[\d+\]/g, ' ').replace(/S&P\s?500/gi, 'SP').replace(/\b\d{4}-\d{2}-\d{2}\b/g, m0 => 'D' + m0.replace(/-/g, '_') + 'D')
+    const clean = s.replace(/\[\d+\]/g, ' ').replace(/S&P\s?500/gi, 'SP').replace(ISO_FIG_RE, 'DATE')
       .replace(/claude-[a-z]+-[\d-]+/gi, 'M').replace(/^\s*\d+[.)]\s+/, '');
     const out = [];
-    const dates = s.match(/\b\d{4}-\d{2}-\d{2}\b/g) || [];
+    const dates = s.match(ISO_FIG_RE) || [];
     out.push(...dates);
     let mm; FIG_RE.lastIndex = 0;
     while ((mm = FIG_RE.exec(clean))) {
@@ -577,15 +636,26 @@
     return parts.filter(p => p.trim());
   }
   function citationCheck(text, registry) {
-    const uncited = [], badRefs = [];
+    const uncited = [], badRefs = [], unsupported = [];
     for (const claim of splitClaims(text)) {
       const figs = figuresIn(claim);
       if (figs.length && !/\[\d+\]/.test(claim)) uncited.push({text: claim.trim().slice(0, 160), figures: figs});
+      const ids = [...claim.matchAll(/\[(\d+)\]/g)].map(m => +m[1]).filter(n => registry && registry.get(n));
+      if (figs.length && ids.length) {
+        const missing = figs.filter(f => !ids.some(id => {
+          const e = registry.evidence && registry.evidence[id];
+          if (!e) return false;
+          if (/^\d{4}-\d{2}(?:-\d{2})?(?:T|$)/.test(f)) return e.dates.has(f) || (f.includes('T') && [...e.dates].some(d => d.includes('T') && Date.parse(d) === Date.parse(f)));
+          const n = figureValue(f);
+          return n && [...e.numbers].some(v => Math.abs(v - n.value) <= n.tolerance + Math.max(1, Math.abs(v)) * 1e-12);
+        }));
+        if (missing.length) unsupported.push({text: claim.trim().slice(0, 160), figures: missing, refs: ids});
+      }
     }
     const refs = new Set();
     String(text).replace(/\[(\d+)\]/g, (x, n) => { refs.add(+n); return x; });
     for (const n of refs) if (!registry || !registry.get(n)) badRefs.push(n);
-    return {ok: !uncited.length && !badRefs.length, uncited, unknown_refs: badRefs, refs: [...refs].sort((a, b) => a - b)};
+    return {ok: !uncited.length && !badRefs.length && !unsupported.length, uncited, unknown_refs: badRefs, unsupported_figures: unsupported, refs: [...refs].sort((a, b) => a - b)};
   }
 
   // ---------------------------------------------------------------- Anthropic client + tool loop
@@ -633,8 +703,18 @@
       conv.messages.push({role: 'assistant', content: res.content});
       const uses = (res.content || []).filter(b => b.type === 'tool_use');
       if (res.stop_reason !== 'tool_use' || !uses.length) {
-        const text = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-        return {text, trace, check: citationCheck(text, conv.registry), rounds, usage: res.usage || null};
+        let text = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+        let check = citationCheck(text, conv.registry);
+        if (!check.ok) {
+          // One text-only repair pass: never repeats actions or silently accepts
+          // a marker as proof. Persistent failures remain visibly unverified.
+          conv.messages.push({role:'user', content:'The dashboard consistency check found unsupported or uncited figures: '+JSON.stringify({uncited:check.uncited,unknown_refs:check.unknown_refs,unsupported_figures:check.unsupported_figures})+'. Rewrite the answer using only the completed tool results. Cite each numeric claim with its matching source. Remove unrelated figures; if a value is unavailable, just say not in the data. Do not repeat dashboard actions or invent evidence. Return only the corrected answer.'});
+          const fixed = await callApi(cfg, Object.assign({}, base, {messages:conv.messages,tool_choice:{type:'none'}}));
+          conv.messages.push({role:'assistant',content:fixed.content});
+          text = (fixed.content || []).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+          check = citationCheck(text,conv.registry);
+        }
+        return {text, trace, check, rounds, usage: res.usage || null};
       }
       rounds++;
       const results = [];
@@ -695,9 +775,10 @@
   }
   function renderWarning(check) {
     if (check.ok) return '';
-    let h = '<div class="soc-warn">';
+    let h = '<div class="soc-warn"><div><b>Answer unverified.</b> Check the cited dashboard sources before relying on these claims.</div>';
     if (check.uncited.length) h += '<div><b>Uncited figure' + (check.uncited.length > 1 ? 's' : '') + ':</b> ' + check.uncited.map(u => esc(u.figures.join(', '))).join('; ') + ' - not backed by a cited tool result; verify on the dashboard before relying on ' + (check.uncited.length > 1 ? 'them' : 'it') + '.</div>';
     if (check.unknown_refs.length) h += '<div><b>Unknown citation marker:</b> ' + check.unknown_refs.map(n => '[' + n + ']').join(' ') + '</div>';
+    if (check.unsupported_figures && check.unsupported_figures.length) h += '<div><b>Figures not found in the cited tool data:</b> ' + check.unsupported_figures.map(u => esc(u.figures.join(', ')) + ' ' + u.refs.map(n => '[' + n + ']').join(' ')).join('; ') + '. Inspect the source entries below; a valid marker alone does not verify a value.</div>';
     return h + '</div>';
   }
 
@@ -815,7 +896,7 @@
             d.textContent = name + ' ' + JSON.stringify(input || {}).slice(0, 120) + (out && out.error ? '  -> ' + out.error.slice(0, 120) : '');
             tr.appendChild(d);
           }});
-        ans.innerHTML = renderMarkdown(r.text || '(empty answer)', turnId) + renderWarning(r.check) + renderSources(r.check.refs, conv.registry, turnId);
+        ans.innerHTML = renderWarning(r.check) + renderMarkdown(r.text || '(empty answer)', turnId) + renderSources(r.check.refs, conv.registry, turnId);
       } catch (e) {
         conv.messages.length = snapshot; // drop the failed exchange so the conversation stays valid
         ans.innerHTML = '<div class="soc-warn">' + esc(e && e.message || e) + '</div>';
@@ -823,6 +904,7 @@
     }
     status();
     root.SmartOptionsChat.open = open; root.SmartOptionsChat.close = close;
+    root.SmartOptionsChat.draft = function (text) { open(); ta.value = String(text || ''); ta.focus(); };
     return root.SmartOptionsChat;
   }
 

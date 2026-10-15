@@ -1,11 +1,11 @@
 {
   "schema": "smartoptions.release.v1",
-  "release_id": "2026-10-15-v2-adaptive-workspace",
-  "built_at": "2026-10-15T22:20:19.208557+00:00",
+  "release_id": "2026-10-15-v2-private-chat",
+  "built_at": "2026-10-15T23:19:17.483723+00:00",
   "data_session": "2026-10-15",
   "tickers": 365,
   "python_tests": 269,
-  "javascript_tests": 134,
+  "javascript_tests": 146,
   "sampled_values_passed": 30,
   "sampled_provenance_findings": 0,
   "sam_tickers_preserved": 343,
@@ -18,9 +18,11 @@
     "Full historical Quality/Trend/flags recomputation requires original input checkpoints."
   ],
   "chat_docked": true,
-  "chat_demo_service": "not publicly connected; own-key mode available",
+  "chat_demo_service": "private Tailscale relay on Soham PC; user network permission required; expires 2026-10-16T06:59:59Z",
   "chat_local_real_provider_check": "PASS: cited AAPL answer and column rearrangement; no key in browser",
   "default_view": "overview",
   "guide": "optional market-review template",
-  "saved_layout_chat_tools": true
+  "saved_layout_chat_tools": true,
+  "chat_tailscale_real_provider_check": "PASS: 4 real browser cases, 14 actual provider calls; no key in browser",
+  "chat_numeric_evidence_guard": true
 }

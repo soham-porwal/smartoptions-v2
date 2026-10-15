@@ -488,6 +488,7 @@
     list_workspaces: () => ['list_workspaces', []],
     set_chart: a => ['set_chart', [a.symbol, a.overlay || null, a.range || null]],
     open_ticker_tab: a => ['open_ticker_tab', [a.symbol, a.tab]],
+    explore: a => ['explore', [a.symbol, a.view || 'peers']],
   };
   function ui_capabilities(m, args, ctx) {
     const api = ctx.api;
@@ -575,6 +576,7 @@
     {name: 'load_workspace', description: 'UI: load a named saved workspace; list available workspaces first.', input_schema: S({name: {type:'string'}}, ['name'])},
     {name: 'list_workspaces', description: 'UI: list available saved workspace names.', input_schema: S({})},
     {name: 'set_chart', description: 'UI: show a ticker chart with an optional macro overlay (factor or series id) and range (e.g. 3m, 1y).', input_schema: S({symbol: {type: 'string'}, overlay: {type: 'string'}, range: {type: 'string'}}, ['symbol'])},
+    {name: 'explore', description: 'UI: open linked chart research. peers compares same-date industry/sector participation for a ticker; factor shows historical company exposures to a macro series. Return gaps are not forecasts.', input_schema:S({symbol:{type:'string'},view:{type:'string',enum:['peers','factor']}},['symbol'])},
   ];
 
   function systemPrompt(m) {

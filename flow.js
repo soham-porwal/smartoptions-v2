@@ -467,7 +467,8 @@
       api.show_flow = n => { step = Math.min(4, Math.max(1, +n || 1)); showFlow(); return {flow_step: step}; };
       api.__flow = true;
     }
-    root.SO2_flow = {render, showFlow, compute: () => { compute(); return M; }, taskRow, launchTask, peerDivergence};
+    root.SO2_flow = {render, showFlow, compute: () => { compute(); return M; }, taskRow, launchTask, peerDivergence,
+      companyVerdict: ticker => { const d=A.D(), r=d.rows.find(r=>r.t===ticker), rules=loadRules(localStorage); return r ? nameVerdict(nameDrivers(r,sectorPE(d.rows),rules),rules) : null; }};
     root.dispatchEvent(new CustomEvent('so:flow-ready'));
   }
   let userMoved = false, tries = 0;

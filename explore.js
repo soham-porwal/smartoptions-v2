@@ -100,6 +100,11 @@ function mount() {
   root.addEventListener('so:chart-update',render);
   root.addEventListener('so:chart-point',e=>{point=e.detail;box.open=true;render();});
   root.SmartOptionsExplore={peers:s=>open('t',s,true),factor:s=>open(s==='SPY'?'t':'s',s,false),peerRows,factorRows};
+  root.SmartOptionsAPI.explore=(id,view)=>{
+    if(view==='peers'){const symbol=String(id).toUpperCase();if(!A.rowOf(symbol))throw new Error('Ticker not in the dashboard');return root.SmartOptionsExplore.peers(symbol);}
+    if(view==='factor'){if(!A.obsOf(id) && id!=='SPY')throw new Error('Series not in the dashboard');return root.SmartOptionsExplore.factor(id);}
+    throw new Error('View must be peers or factor');
+  };
   render();
 }
 if (typeof module==='object' && module.exports) module.exports={peerRows,factorRows};

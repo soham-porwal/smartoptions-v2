@@ -1,7 +1,7 @@
 {
   "schema": "smartoptions.release.v1",
   "release_id": "2026-10-15-v2-evidence-workflow",
-  "built_at": "2026-10-15T23:25:37.609093+00:00",
+  "built_at": "2026-10-15T23:26:54.318419+00:00",
   "data_session": "2026-10-15",
   "tickers": 365,
   "python_tests": 273,

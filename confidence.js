@@ -74,7 +74,7 @@ function rank(results) { return results.filter(r => r && isNum(r.score)).slice()
 /* ---------------- browser wiring (data from the other modules; nothing fetched that they do not already fetch) ---------------- */
 const cache = {};
 const core = () => { try { return root.SO2 && root.SO2.D ? root.SO2.D() : null; } catch (e) { return null; } };
-function flowWord(t) { try { const M = root.SO2_flow && root.SO2_flow.compute && root.SO2_flow.compute(); const x = M && M.rows && M.rows.find(z => z.r.t === t); return x ? x.nv : null; } catch (e) { return null; } }
+function flowWord(t) { try { if(root.SO2_flow && root.SO2_flow.companyVerdict)return root.SO2_flow.companyVerdict(t); const M = root.SO2_flow && root.SO2_flow.compute && root.SO2_flow.compute(); const x = M && M.rows && M.rows.find(z => z.r.t === t); return x ? x.nv : null; } catch (e) { return null; } }
 function events(D) {
   const now = Date.parse((D && D.asof_session || '') + 'T12:00:00Z') || Date.now(), out = [];
   for (const e of (D && D.calendar) || []) { if (!/FOMC|CPI|NFP/.test(e.type || '')) continue; const t = Date.parse(e.scheduled_et || ''); if (!isFinite(t)) continue; const days = Math.ceil((t - now) / 864e5); if (days >= 0 && days <= 30) out.push({type: e.type, date: String(e.scheduled_et).slice(0, 10), days}); }

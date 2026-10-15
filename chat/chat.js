@@ -21,16 +21,29 @@
   const MAX_TOOL_ROUNDS = 6;
   const LS_KEY = 'smartoptions.chat.apiKey';
   const LS_MODEL = 'smartoptions.chat.model';
+  let demoService = null;
   const FACTORS = ['spy', 'us10y_bps', 'dxy', 'wti', 'vix'];
   // scenario shock name -> relations factor key (units must match rel.units)
   const SHOCK_TO_FACTOR = {spy_pct: 'spy', us10y_bps: 'us10y_bps', dxy_pct: 'dxy', wti_pct: 'wti', vix_pts: 'vix'};
   const NOT_AVAILABLE = 'not available in this build';
 
   // ---------------------------------------------------------------- network guard
-  function isAllowedUrl(url, origin) {
+  function validateDemoConfig(value, now) {
+    if (!value || value.enabled !== true) return null;
+    let u;
+    try { u = new URL(value.url); } catch (e) { return null; }
+    if (u.protocol !== 'https:' || !u.hostname.endsWith('.trycloudflare.com') || u.username || u.password || u.pathname !== '/v1/messages' || u.search || u.hash) return null;
+    const expires = Date.parse(value.expires_at);
+    if (!Number.isFinite(expires) || expires <= (now == null ? Date.now() : now)) return null;
+    if (!MODELS.some(m => m.id === value.model)) return null;
+    return {url: u.href, expires_at: value.expires_at, model: value.model};
+  }
+  function activeDemo() { return validateDemoConfig(demoService && Object.assign({enabled: true}, demoService)); }
+  function isAllowedUrl(url, origin, demo) {
     let u;
     try { u = new URL(url, origin || 'http://same.origin.invalid/'); } catch (e) { return false; }
     if (u.origin === API_ORIGIN) return u.pathname === '/v1/messages';
+    if (demo && validateDemoConfig(Object.assign({enabled: true}, demo)) && u.href === demo.url) return true;
     const own = origin ? new URL(origin).origin : 'http://same.origin.invalid';
     return u.origin === own;
   }
@@ -39,7 +52,7 @@
   }
   // the ONLY place this module touches the network
   function safeFetch(url, opts) {
-    if (!isAllowedUrl(url, pageOrigin())) return Promise.reject(new Error('blocked request to ' + url + ' (only api.anthropic.com and same-origin are allowed)'));
+    if (!isAllowedUrl(url, pageOrigin(), activeDemo())) return Promise.reject(new Error('blocked request (only the configured demo relay, Anthropic and same-origin data are allowed)'));
     return root.fetch(url, opts);
   }
 
@@ -582,11 +595,15 @@
 
   async function callApi(cfg, body) {
     let r;
+    const demo = !cfg.apiKey && activeDemo();
+    const url = demo ? demo.url : API_URL;
+    const headers = demo ? {'content-type': 'application/json'} : {
+      'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json'};
+    if (demo) body = Object.assign({}, body, {model: demo.model, max_tokens: Math.min(body.max_tokens || 1024, 1024)});
     try {
-      r = await safeFetch(API_URL, {method: 'POST', headers: {
-        'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json'}, body: JSON.stringify(body)});
-    } catch (e) { throw new Error('Network error reaching api.anthropic.com: ' + (e && e.message || e)); }
+      r = await safeFetch(url, {method: 'POST', headers, body: JSON.stringify(body)});
+    } catch (e) { throw new Error((demo ? 'Demo connection unavailable. Try again or connect your own key. ' : 'Network error reaching Anthropic. ') + (e && e.message || e)); }
     let data = null;
     try { data = await r.json(); } catch (e) { data = null; }
     if (!r.ok || (data && data.type === 'error')) throw new Error(apiError(r.status, data));
@@ -691,23 +708,29 @@
     const ls = store();
     let dataModel = null, dataErr = null, busy = false, conv = newConversation(), turnSeq = 0;
     const dataReady = loadData(opts).then(m => { dataModel = m; status(); }, e => { dataErr = e; status(); });
+    const demoReady = safeFetch((opts.dataBase || 'data/') + 'chat-demo.json').then(r => r.ok ? r.json() : null).then(c => {
+      demoService = validateDemoConfig(c);
+      status();
+    }).catch(() => { demoService = null; status(); });
 
     const wrap = doc.createElement('div');
+    wrap.className = 'soc-host';
     wrap.innerHTML =
       '<button type="button" id="soc-toggle" class="soc-toggle" title="Analyst chat (/)">ASK</button>' +
-      '<aside id="soc-panel" class="soc" aria-hidden="true" aria-label="SmartOptions analyst chat">' +
-      '<div class="soc-hd"><span class="soc-tt">ANALYST</span><select class="soc-model" aria-label="Model">' +
+      '<aside id="soc-panel" class="soc" aria-hidden="false" aria-label="SmartOptions analyst chat">' +
+      '<div class="soc-hd"><span class="soc-tt">ASK YOUR DASHBOARD <span class="soc-tagline">· Explain the data or arrange your view</span></span><select class="soc-model" aria-label="Model">' +
       MODELS.map(x => '<option value="' + x.id + '">' + x.label + '</option>').join('') + '</select>' +
-      '<button type="button" class="soc-set">KEY</button><button type="button" class="soc-new">NEW</button><button type="button" class="soc-x" aria-label="Close">CLOSE</button></div>' +
+      '<button type="button" class="soc-set" title="Connect your Anthropic API key">KEY</button><button type="button" class="soc-new">NEW</button><button type="button" class="soc-expand" aria-label="Expand chat" aria-expanded="false">Expand ↗</button><button type="button" class="soc-x" aria-label="Collapse chat">Collapse ↙</button></div>' +
       '<form class="soc-settings" hidden onsubmit="return false"><label>Anthropic API key<input type="password" class="soc-key" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."></label>' +
       '<div class="soc-row"><button type="button" class="soc-save">SAVE</button><button type="button" class="soc-forget">FORGET KEY</button></div>' +
       '<div class="soc-note">Stored only in this browser (localStorage) and sent only to api.anthropic.com. Do not use on a shared computer.</div></form>' +
       '<div class="soc-stat"></div><div class="soc-log" aria-live="polite"></div>' +
       '<div class="soc-examples" style="display:flex;gap:6px;overflow-x:auto;flex-shrink:0;padding:5px 8px;white-space:nowrap" aria-label="Example prompts">' + SUGGESTED.map(s => '<button type="button" style="font-size:11px">' + esc(s) + '</button>').join('') + '</div>' +
       '<div class="soc-key-hint soc-note" style="padding:4px 8px">Use your own Anthropic API key via KEY. It is stored only in your browser and sent only to Anthropic.</div>' +
-      '<form class="soc-in"><textarea rows="2" placeholder="Ask about the dashboard  (Enter send, Esc close)"></textarea><button type="submit">ASK</button></form>' +
+      '<form class="soc-in"><textarea rows="1" aria-label="Ask about dashboard data or customize the view" placeholder="Why is the market leaning bullish? · Show only valuation columns…"></textarea><button type="submit">Send →</button></form>' +
       '<div class="soc-disc">Research tool, not advice. Figures cite dashboard data; associations are not causes.</div></aside>';
-    doc.body.appendChild(wrap);
+    const tape = doc.getElementById('tape');
+    if (tape) tape.after(wrap); else doc.body.appendChild(wrap);
     const $ = s => wrap.querySelector(s);
     const panel = $('#soc-panel'), log = $('.soc-log'), ta = $('.soc-in textarea'), sel = $('.soc-model'), settings = $('.soc-settings'), keyIn = $('.soc-key');
     sel.value = (ls && ls.getItem(LS_MODEL)) || MODELS[0].id;
@@ -717,9 +740,13 @@
       const st = $('.soc-stat');
       const parts = [];
       parts.push(dataErr ? 'data: ' + dataErr.message : dataModel ? 'data: session ' + dataModel.asof_session + ', ' + Object.keys(dataModel.tickers).length + ' tickers' : 'data: loading');
-      parts.push(getKey() ? 'key: set' : 'key: not set');
+      const demo = !getKey() && activeDemo();
+      parts.push(getKey() ? 'your key: connected' : demo ? 'Demo connected · expires ' + new Date(demo.expires_at).toLocaleString() : 'key: not set');
       st.textContent = parts.join('  |  ');
-      $('.soc-key-hint').hidden = !!getKey();
+      $('.soc-key-hint').hidden = !!getKey() || !!demo;
+      sel.disabled = !!demo;
+      if (demo) sel.value = demo.model;
+      $('.soc-set').textContent = demo ? 'Your key' : 'KEY';
     }
     function suggestions() {
       if (log.children.length) return;
@@ -728,15 +755,17 @@
       d.addEventListener('click', e => { if (e.target.tagName === 'BUTTON') { ta.value = e.target.textContent; submit(); } });
       log.appendChild(d);
     }
-    function open() { panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false'); doc.documentElement.classList.add('soc-open'); suggestions(); status(); ta.focus(); }
-    function close() { panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true'); doc.documentElement.classList.remove('soc-open'); }
+    function resizeDashboard() { root.dispatchEvent(new root.Event('resize')); }
+    function open() { panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false'); $('.soc-expand').setAttribute('aria-expanded', 'true'); doc.documentElement.classList.add('soc-open'); suggestions(); status(); ta.focus(); resizeDashboard(); }
+    function close() { panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'false'); $('.soc-expand').setAttribute('aria-expanded', 'false'); doc.documentElement.classList.remove('soc-open'); resizeDashboard(); }
     $('#soc-toggle').addEventListener('click', () => panel.classList.contains('open') ? close() : open());
     $('.soc-examples').addEventListener('click', e => { const b=e.target.closest('button'); if(b) { ta.value=b.textContent; ta.focus(); } });
     $('.soc-x').addEventListener('click', close);
-    $('.soc-set').addEventListener('click', () => { settings.hidden = !settings.hidden; keyIn.value = ''; keyIn.placeholder = getKey() ? 'key saved (hidden) - paste to replace' : 'sk-ant-...'; });
+    $('.soc-expand').addEventListener('click', open);
+    $('.soc-set').addEventListener('click', () => { open(); settings.hidden = !settings.hidden; keyIn.value = ''; keyIn.placeholder = getKey() ? 'key saved (hidden) - paste to replace' : 'sk-ant-...'; });
     $('.soc-save').addEventListener('click', () => { const v = keyIn.value.trim(); if (v && ls) ls.setItem(LS_KEY, v); keyIn.value = ''; settings.hidden = true; status(); });
     $('.soc-forget').addEventListener('click', () => { if (ls) ls.removeItem(LS_KEY); keyIn.value = ''; status(); });
-    $('.soc-new').addEventListener('click', () => { if (busy) return; conv = newConversation(); log.innerHTML = ''; suggestions(); });
+    $('.soc-new').addEventListener('click', () => { if (busy) return; conv = newConversation(); log.innerHTML = ''; panel.classList.remove('has-turns'); suggestions(); resizeDashboard(); });
     sel.addEventListener('change', () => { if (ls) ls.setItem(LS_MODEL, sel.value); });
     $('.soc-in').addEventListener('submit', e => { e.preventDefault(); submit(); });
     ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } });
@@ -757,14 +786,17 @@
     async function submit() {
       const q = ta.value.trim();
       if (!q || busy) return;
+      panel.classList.add('has-turns');
+      resizeDashboard();
       const sug = log.querySelector('.soc-sug'); if (sug) sug.remove();
       const turnId = ++turnSeq;
       const t = doc.createElement('div'); t.className = 'soc-turn';
-      t.innerHTML = '<div class="soc-q">&gt; ' + esc(q) + '</div><div class="soc-trace"></div><div class="soc-a"><span class="soc-dim">working...</span></div>';
+      t.innerHTML = '<div class="soc-q">&gt; ' + esc(q) + '</div><details class="soc-actions"><summary>Data & dashboard actions</summary><div class="soc-trace"></div></details><div class="soc-a"><span class="soc-dim">working...</span></div>';
       log.appendChild(t); log.scrollTop = log.scrollHeight;
       ta.value = '';
       const ans = t.querySelector('.soc-a'), tr = t.querySelector('.soc-trace');
-      if (!getKey()) { ans.innerHTML = '<div class="soc-warn">No API key set. Click KEY and paste your Anthropic API key (kept only in this browser).</div>'; settings.hidden = false; return; }
+      await demoReady;
+      if (!getKey() && !activeDemo()) { ans.innerHTML = '<div class="soc-warn">No chat connection set. Click KEY to connect your Anthropic API key. Today’s shared demo may have expired.</div>'; open(); settings.hidden = false; return; }
       await dataReady;
       if (!dataModel) { ans.innerHTML = '<div class="soc-warn">Dashboard data could not be loaded: ' + esc(dataErr && dataErr.message) + '</div>'; return; }
       busy = true;
@@ -789,7 +821,7 @@
 
   return {
     version: '1', API_URL, MODELS, MAX_TOOL_ROUNDS, TOOL_SCHEMAS, SUGGESTED,
-    adapt, loadData, isAllowedUrl, safeFetch, CiteRegistry, newConversation, runTool, systemPrompt,
+    adapt, loadData, isAllowedUrl, validateDemoConfig, safeFetch, CiteRegistry, newConversation, runTool, systemPrompt,
     citationCheck, figuresIn, ask, renderMarkdown, renderSources, renderWarning, mount,
     tools: DATA_TOOLS, uiTools: Object.keys(UI_TOOLS),
   };

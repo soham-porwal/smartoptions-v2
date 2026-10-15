@@ -1,11 +1,11 @@
 {
   "schema": "smartoptions.release.v1",
-  "release_id": "2026-10-15-v2-1530",
+  "release_id": "2026-10-15-v2-chat-dock",
   "built_at": "2026-10-15T22:20:19.208557+00:00",
   "data_session": "2026-10-15",
   "tickers": 365,
-  "python_tests": 218,
-  "javascript_tests": 133,
+  "python_tests": 269,
+  "javascript_tests": 134,
   "sampled_values_passed": 30,
   "sampled_provenance_findings": 0,
   "sam_tickers_preserved": 343,
@@ -16,5 +16,8 @@
     "Sam scores remain the dated 2026-07-25 snapshot.",
     "Strategy premiums are illustrative without a live option-chain key.",
     "Full historical Quality/Trend/flags recomputation requires original input checkpoints."
-  ]
+  ],
+  "chat_docked": true,
+  "chat_demo_service": "not publicly connected; own-key mode available",
+  "chat_local_real_provider_check": "PASS: cited AAPL answer and column rearrangement; no key in browser"
 }

@@ -230,7 +230,7 @@
       symbol: t.symbol, name: t.name, sector: t.sector, industry: t.industry,
       sets: t.sets, set_meaning: m.meta.sets || null,
       price: t.price, price_date: t.price_date, chg_1d_pct: t.chg_1d_pct, chg_5d_pct: t.chg_5d_pct, chg_1m_pct: t.chg_1m_pct,
-      vol_ratio_20d: t.vol_ratio_20d, range_52w: t.range_52w,
+      vol_ratio_20d: t.vol_ratio_20d, range_52w: Object.assign({window_weeks:52},t.range_52w),
       pe_trailing: t.pe_trailing, pe_forward: t.pe_forward, peg: t.peg,
       earnings: Object.assign({}, t.earnings, {days_until_today: earningsDays(t, ctx)}),
       analyst: t.analyst, beta_provider: t.beta_provider, market_cap: t.market_cap, atm_iv: t.atm_iv,
@@ -412,7 +412,8 @@
     if (vb) {
       cites.push(ctx.cite({label: 'Options-seller context: VRP, VIX/VIX3M, RSP-SPY breadth', source: 'SmartOptions V2 (Cboe VIX, Yahoo SPY/RSP)', series: 'vol_breadth', as_of: m.asof_session, url: null}));
       const pick = k => vb[k] ? {value: vb[k].value, unit: vb[k].unit, last_5: (vb[k].history || []).slice(-5)} : null;
-      vol = {vrp: pick('vrp'), term_ratio_vix_vix3m: pick('term_ratio'), breadth_rsp_minus_spy_20d: pick('breadth_rsp_spy_20d'), method: vb.method};
+      vol = {vrp: pick('vrp'), term_ratio_vix_vix3m: pick('term_ratio'), breadth_rsp_minus_spy_20d: pick('breadth_rsp_spy_20d'), method: vb.method,
+        interpretation_reference:{term_ratio_parity:1,vrp_parity:0,note:'Term ratio = VIX / VIX3M; above parity is backwardation. VRP = implied minus realized volatility; zero is parity.'}};
     }
     cites.push(citeRel(m, null, ctx));
     return {score: m.regime.score, tier: m.regime.tier, components: m.regime.components, method: m.regime.method, history_note: m.regime.history_note,

@@ -52,3 +52,5 @@
 @container (max-width: 560px) { .st-list, .st-cmpg { grid-template-columns: 1fr; } }
 .st-q { font-size: 11px; color: var(--fg2); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .st-svg { max-width: 720px; }
+.st-kv td { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .r7-box.r7-wide { inset: 44px 4px 4px 4px; padding: 8px; } }

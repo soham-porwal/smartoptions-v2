@@ -150,7 +150,13 @@
           else { const n = figureValue(f); if (n) evidence.numbers.add(n.value); }
         }
       } else if (Array.isArray(v)) v.forEach(collect);
-      else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) if (!skip.has(k)) collect(x);
+      else if (v && typeof v === 'object') {
+        // Macro observations may store 29 with unit "thousands" while prose
+        // correctly says "29 thousand". Bind the explicit unit's base amount.
+        const u=String(v.unit || '').toLowerCase(), scale=/\bthousands?\b/.test(u)?1e3:/\bmillions?\b/.test(u)?1e6:/\bbillions?\b/.test(u)?1e9:1;
+        if(scale!==1){for(const k of ['value','prior','change_vs_prior'])if(typeof v[k]==='number' && Number.isFinite(v[k]))evidence.numbers.add(v[k]*scale);for(const p of v.history_tail || [])if(Array.isArray(p) && typeof p[1]==='number')evidence.numbers.add(p[1]*scale);}
+        for (const [k, x] of Object.entries(v)) if (!skip.has(k)) collect(x);
+      }
     }
     collect(value);
     for (const d of (cite.as_of || '').match(ISO_FIG_RE) || []) { evidence.dates.add(d); evidence.dates.add(d.slice(0, 10)); }
@@ -160,7 +166,7 @@
     if (!registry || !out || out.error || name === 'ui_capabilities') return;
     if (name === 'get_ticker') {
       const groups = {
-        price_and_returns: ['price', 'price_date', 'chg_1d_pct', 'chg_5d_pct', 'chg_1m_pct', 'vol_ratio_20d', 'range_52w'],
+        price_and_returns: ['price', 'price_date', 'chg_1d_pct', 'chg_5d_pct', 'chg_1m_pct', 'vol_ratio_20d', 'volume_window_sessions', 'range_52w'],
         fundamentals_analyst_earnings_iv: ['pe_trailing', 'pe_forward', 'peg', 'earnings', 'analyst', 'beta_provider', 'market_cap', 'atm_iv'],
         sam_snapshot: ['sam_snapshot'], relations: ['relations', 'attribution_last_session'], delayed_quote: ['delayed_quote'],
       };
@@ -230,7 +236,7 @@
       symbol: t.symbol, name: t.name, sector: t.sector, industry: t.industry,
       sets: t.sets, set_meaning: m.meta.sets || null,
       price: t.price, price_date: t.price_date, chg_1d_pct: t.chg_1d_pct, chg_5d_pct: t.chg_5d_pct, chg_1m_pct: t.chg_1m_pct,
-      vol_ratio_20d: t.vol_ratio_20d, range_52w: Object.assign({window_weeks:52},t.range_52w),
+      vol_ratio_20d: t.vol_ratio_20d, volume_window_sessions:20, range_52w: Object.assign({window_weeks:52},t.range_52w),
       pe_trailing: t.pe_trailing, pe_forward: t.pe_forward, peg: t.peg,
       earnings: Object.assign({}, t.earnings, {days_until_today: earningsDays(t, ctx)}),
       analyst: t.analyst, beta_provider: t.beta_provider, market_cap: t.market_cap, atm_iv: t.atm_iv,
@@ -618,6 +624,8 @@
   }
   function figuresIn(s) {
     const clean = s.replace(/\[\d+\]/g, ' ').replace(/S&P\s?500/gi, 'SP').replace(ISO_FIG_RE, 'DATE')
+      .replace(/\b(?:2|3|5|7|10|20|30)[- ]year\b/gi, 'MATURITY')
+      .replace(/\b(?:down|fell|dropped|declined)(?:\s+by)?\s+(\d+(?:\.\d+)?%)/gi, '-$1')
       .replace(/claude-[a-z]+-[\d-]+/gi, 'M').replace(/^\s*\d+[.)]\s+/, '');
     const out = [];
     const dates = s.match(ISO_FIG_RE) || [];

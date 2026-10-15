@@ -116,7 +116,7 @@ const tapeSeries = id => id;
 const COLS = [
   {k: 't', h: 'Ticker', l: 1},
   {k: 'd1', h: '1d', tip: '1-session % change, adjusted close'},
-  {k: 'px', h: 'Price', ph: 1},
+  {k: 'px', h: 'Price'},
   {k: 'spark', h: '3M', ns: 1},
   {k: 'pef', h: 'P/E f', ph: 1, tip: 'Forward P/E (Yahoo)'},
   {k: 'peg', h: 'PEG', ph: 1},
@@ -135,7 +135,9 @@ function val(r, k) {
     case 'boil': return r.rel ? r.rel.c.wti : null;
     case 'scen': return r.rel && scenOn() ? scenarioImpact(r.rel.c, S.shock) : null;
     case 't': return r.t;
-    default: return r[k];
+    default:
+      if (k.startsWith('c:')) return r.rel ? r.rel.c[k.slice(2)] : null;
+      return r[k];
   }
 }
 const PRESETS = [
@@ -190,8 +192,8 @@ function cell(r, c) {
       return `<td class="l"><span class="tk">${esc(r.t)}</span>${badge}</td>`;
     }
     case 'd1': return `<td data-tip="${esc(provTip(r, 'chg'))}">${pct(r.d1, 2, stReason(r, 'chg', '1d change'))}</td>`;
-    case 'px': return `<td class="ph" data-tip="${esc(provTip(r, 'price'))}">${num(r.px, 2, stReason(r, 'price', 'price'))}</td>`;
-    case 'spark': return `<td class="ph">${spark(r.spark, 64, 16)}</td>`;
+    case 'px': return `<td data-tip="${esc(provTip(r, 'price'))}">${num(r.px, 2, stReason(r, 'price', 'price'))}</td>`;
+    case 'spark': return `<td>${spark(r.spark, 64, 16)}</td>`;
     case 'pef': return `<td class="ph">${num(r.pef, 1, stReason(r, 'pe_forward', 'forward P/E'))}</td>`;
     case 'peg': return `<td class="ph" data-tip="${esc(r.pegm || '')}">${num(r.peg, 2, stReason(r, 'peg', 'PEG'))}</td>`;
     case 'pct': return `<td class="ph" data-tip="52w low ${r.lo} · high ${r.hi} · ${isNum(r.pct) ? r.pct.toFixed(0) + ' pctile' : ''}">${isNum(r.pct) ? `<span class="rng"><i style="left:${Math.max(0, Math.min(100, r.pct)) * .54}px"></i></span>` : na(stReason(r, 'range_52w', '52w range'))}</td>`;
@@ -217,7 +219,8 @@ function renderTable() {
   const selT = V.sel.kind === 't' ? V.sel.id : null;
   $('#tbody').innerHTML = rows.map(r => `<tr data-t="${esc(r.t)}"${r.t === selT ? ' class="sel"' : ''}>${COLS.map(c => cell(r, c)).join('')}</tr>`).join('');
   const sc = scenOn() ? ' · scenario on: ' + FACTORS.filter(f => S.shock[f]).map(f => `${FLABEL[f]} ${S.shock[f] > 0 ? '+' : ''}${S.shock[f]}${SHOCK_U[f]}`).join(', ') + ' (historical association, not a forecast)' : '';
-  $('#tmeta').innerHTML = `<span>${rows.length} of ${D.rows.length}${sc}</span><span>Sam cols = snapshot 2026-07-25</span>`;
+  const sk = V.sort.k.startsWith('c:') ? ` · sorted by ${FLABEL[V.sort.k.slice(2)]} coef` : '';
+  $('#tmeta').innerHTML = `<span>${rows.length} of ${D.rows.length}${V.sector ? ' · ' + esc(V.sector) : ''}${sk}${sc}</span><span>Sam cols = snapshot 2026-07-25</span>`;
 }
 
 /* ---------- chart ---------- */
@@ -533,7 +536,7 @@ async function boot() {
   readHash();
   if (V.sel.kind === 't' && V.sel.id !== 'SPY' && !rowOf(V.sel.id)) V.sel = {kind: 't', id: 'SPY'};
   selfCheck();
-  window.SO2 = {D: () => D, S: () => S, V, renderTable, renderAll, select, save, scenarioImpact, FACTORS, FLABEL, SHOCK_U, DEFAULTS, filtered, num, pct, na, esc, spark, isNum, seriesData, obsOf, showTab};
+  window.SO2 = {D: () => D, S: () => S, V, renderTable, renderAll, renderDetail, select, save, scenarioImpact, FACTORS, FLABEL, SHOCK_U, DEFAULTS, filtered, num, pct, na, esc, spark, isNum, seriesData, obsOf, showTab};
   wire();
   renderAll();
   showTab(V.tab);

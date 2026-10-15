@@ -1,11 +1,11 @@
 {
   "schema": "smartoptions.release.v1",
-  "release_id": "2026-10-15-v2-adaptive-workspace",
-  "built_at": "2026-10-15T22:20:19.208557+00:00",
+  "release_id": "2026-10-15-v2-evidence-workflow",
+  "built_at": "2026-10-15T23:25:37.609093+00:00",
   "data_session": "2026-10-15",
   "tickers": 365,
-  "python_tests": 269,
-  "javascript_tests": 134,
+  "python_tests": 273,
+  "javascript_tests": 147,
   "sampled_values_passed": 30,
   "sampled_provenance_findings": 0,
   "sam_tickers_preserved": 343,
@@ -18,9 +18,15 @@
     "Full historical Quality/Trend/flags recomputation requires original input checkpoints."
   ],
   "chat_docked": true,
-  "chat_demo_service": "not publicly connected; own-key mode available",
+  "chat_demo_service": "private Tailscale on Soham PC; allow browser local network access; expires 2026-10-16T06:59:59Z",
   "chat_local_real_provider_check": "PASS: cited AAPL answer and column rearrangement; no key in browser",
   "default_view": "overview",
   "guide": "optional market-review template",
-  "saved_layout_chat_tools": true
+  "saved_layout_chat_tools": true,
+  "chat_tailscale_real_provider_check": "PASS: 4 fully published cases, 15 real provider calls; no browser key or API mock",
+  "chat_numeric_evidence_guard": true,
+  "chat_confidence_component_tool": true,
+  "chart_exploration": "chart point detail, any loaded ticker/macro overlay, historical exposures and same-date peers",
+  "workflow": "question-led task branches; conditional evidence brief; sample Guide optional",
+  "confidence": "documented heuristic support score; no calibrated probability of profit"
 }

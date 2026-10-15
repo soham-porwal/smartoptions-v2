@@ -92,7 +92,10 @@ function seriesLabel(id) { const s = D.series[id]; return s ? `${s.label}${s.uni
 function renderHeader() {
   const g = D.gen || {};
   const ex = D.exported_at;
-  $('#hstat').innerHTML = `Session ${esc(D.asof_session)} · updated ${etTime(ex)} ET · delayed · <span class="dim">Sam columns: snapshot 2026-07-25</span>`;
+  const st = {};
+  for (const k in D.macro) for (const o of D.macro[k]) st[o.status] = (st[o.status] || 0) + 1;
+  const fr = `macro ${st.ok || 0} ok${st.stale ? ` · <span style="color:var(--warn)">${st.stale} stale</span>` : ''}${st.missing ? ` · ${st.missing} missing` : ''}${st.error ? ` · ${st.error} error` : ''}`;
+  $('#hstat').innerHTML = `Session ${esc(D.asof_session)} · updated ${etTime(ex)} ET · delayed · ${fr} · <span class="dim">Sam columns: snapshot 2026-07-25</span>`;
   $('#hstat').dataset.tip = `exported ${ex}\nmacro ${g.macro}\nequities ${g.equities}\nrelations ${g.relations}\ncrosscheck ${g.crosscheck}`;
 }
 function renderTape() {
@@ -189,7 +192,7 @@ function cell(r, c) {
     case 't': {
       const a = r.sets.includes('A'), b = r.sets.includes('B');
       const badge = `<span class="badge${a ? ' a' : ''}" data-tip="${a ? 'A = top S&P 500 mover today' : ''}${a && b ? '\n' : ''}${b ? "B = in Sam's 2026-07-25 universe" : ''}">${a && b ? 'A+B' : a ? 'A' : 'B'}</span>`;
-      return `<td class="l"><span class="tk">${esc(r.t)}</span>${badge}</td>`;
+      return `<td class="l"><span class="tk" data-tip="${esc((r.n || '') + '\n' + (r.sec || '') + (r.ind ? ' · ' + r.ind : ''))}">${esc(r.t)}</span>${badge}</td>`;
     }
     case 'd1': return `<td data-tip="${esc(provTip(r, 'chg'))}">${pct(r.d1, 2, stReason(r, 'chg', '1d change'))}</td>`;
     case 'px': return `<td data-tip="${esc(provTip(r, 'price'))}">${num(r.px, 2, stReason(r, 'price', 'price'))}</td>`;
@@ -199,7 +202,8 @@ function cell(r, c) {
     case 'pct': return `<td class="ph" data-tip="52w low ${r.lo} · high ${r.hi} · ${isNum(r.pct) ? r.pct.toFixed(0) + ' pctile' : ''}">${isNum(r.pct) ? `<span class="rng"><i style="left:${Math.max(0, Math.min(100, r.pct)) * .42}px"></i></span>` : na(stReason(r, 'range_52w', '52w range'))}</td>`;
     case 'ern': return `<td class="ph" data-tip="${esc((r.er || '') + ' ' + (r.ert || '') + '\n' + (r.ers || ''))}">${isNum(r.ern) ? r.ern + 'd' : na(stReason(r, 'earnings', 'earnings date'))}</td>`;
     case 'iv': return `<td class="ph" data-tip="${esc(r.ivs ? `${r.ivs}\nexpiry ${r.ivx}, strike ${r.ivk}${r.ivspan ? '\nexpiry spans earnings' : ''}` : '')}">${isNum(r.iv) ? r.iv.toFixed(1) : na('ATM IV only fetched for movers + nearest-earnings names (status: ' + ((r.st || {}).atm_iv || 'not fetched') + ')')}</td>`;
-    case 'opp': return `<td class="ph sam">${r.sam ? num(r.sam.opp, 1, 'no score in snapshot') : na("not in Sam's 2026-07-25 snapshot")}</td>`;
+    case 'opp': return `<td class="ph sam" data-tip="${esc(r.sam ? `Sam snapshot 2026-07-25 · quality ${r.sam.q || '-'} · risk ${r.sam.risk || '-'}
+flags ${r.sam.flags || '-'}${r.sam.risk === 'AVOID' ? '\nAVOID -> his composite is 0 by rule' : ''}` : '')}">${r.sam ? num(r.sam.opp, 1, 'no score in snapshot') : na("not in Sam's 2026-07-25 snapshot")}</td>`;
     case 'b10': case 'boil': {
       const f = c.k === 'b10' ? 'us10y_bps' : 'wti';
       if (!r.rel) return `<td class="ph">${na('no regression (insufficient history)')}</td>`;
@@ -306,11 +310,17 @@ function markers(data) {
 }
 function setRange() {
   if (!mainSeries || !chart) return;
-  const months = {'1M': 1, '3M': 3, '6M': 6, '1Y': 12}[V.range] || 3;
-  const ds = mainSeries.data ? null : null;
-  const to = new Date(D.asof_session + 'T00:00:00Z'); const from = new Date(to); from.setUTCMonth(from.getUTCMonth() - months);
-  try { chart.timeScale().setVisibleRange({from: from.toISOString().slice(0, 10), to: D.asof_session}); } catch (e) { chart.timeScale().fitContent(); }
-  $('#ranges').innerHTML = ['1M', '3M', '6M', '1Y'].map(r => `<button data-r="${r}" class="${V.range === r ? 'on' : ''}">${r}</button>`).join('');
+  const months = {'1M': 1, '3M': 3, '6M': 6, '1Y': 12}[V.range];
+  const d = mainSeries.data(), lastT = d.length ? d[d.length - 1].time : D.asof_session;
+  if (!months || !d.length) chart.timeScale().fitContent();
+  else {
+    const to = new Date(lastT + 'T00:00:00Z'); const from = new Date(to); from.setUTCMonth(from.getUTCMonth() - months);
+    const fs = from.toISOString().slice(0, 10);
+    // monthly/quarterly series: too few points in a short window -> show all instead of an empty chart
+    if (d.filter(p => p.time >= fs).length < 12) chart.timeScale().fitContent();
+    else try { chart.timeScale().setVisibleRange({from: fs, to: lastT}); } catch (e) { chart.timeScale().fitContent(); }
+  }
+  $('#ranges').innerHTML = ['1M', '3M', '6M', '1Y', 'All'].map(r => `<button data-r="${r}" class="${V.range === r ? 'on' : ''}">${r}</button>`).join('');
 }
 function daysTo(iso) { return Math.round((new Date(iso) - new Date()) / 864e5 * 10) / 10; }
 function evStrip() {
@@ -461,6 +471,12 @@ function select(kind, id, noHash) {
   drawChart(); renderDetail();
   if (!noHash) writeHash();
 }
+function step(dir) {
+  const rows = [...document.querySelectorAll('#tbody tr[data-t]')]; if (!rows.length) return;
+  const i = rows.findIndex(tr => tr.classList.contains('sel'));
+  const n = rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + dir))];
+  select('t', n.dataset.t); n.scrollIntoView({block: 'nearest'});
+}
 function writeHash() {
   const sh = FACTORS.filter(f => S.shock[f]).map(f => `${f}:${S.shock[f]}`).join(',');
   const h = `${V.sel.kind}=${encodeURIComponent(V.sel.id)}&r=${V.range}${V.overlay ? '&ov=' + V.overlay : ''}${sh ? '&sc=' + sh : ''}${V.tab !== 'markets' ? '&tab=' + V.tab : ''}`;
@@ -478,7 +494,18 @@ function readHash() {
 
 /* ---------- events ---------- */
 function wire() {
-  $('#tbody').addEventListener('click', e => { const tr = e.target.closest('tr[data-t]'); if (tr) select('t', tr.dataset.t); });
+  $('#tbody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-t]'); if (!tr) return;
+    select('t', tr.dataset.t);
+    if (window.innerWidth <= 820) $('#center').scrollIntoView({behavior: 'smooth', block: 'start'});
+  });
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,select,textarea')) return;
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); step(1); }
+    else if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); step(-1); }
+    else if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
+    else if (e.key === 'Escape') { $('#controls').hidden = true; $('#about').hidden = true; }
+  });
   $('#thead').addEventListener('click', e => {
     const th = e.target.closest('th[data-k]'); if (!th || !th.dataset.k) return;
     const k = th.dataset.k; V.sort = {k, dir: V.sort.k === k ? -V.sort.dir : (k === 't' ? 1 : -1)}; renderTable();

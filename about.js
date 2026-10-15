@@ -2,12 +2,25 @@
 'use strict';
 (function () {
 function md(t, esc) {
-  // minimal markdown: headings, bullets, inline code; everything escaped first
-  return esc(t || '').split(/\n/).map(l => {
-    if (/^#{1,3} /.test(l)) return `<h3>${l.replace(/^#+ /, '')}</h3>`;
-    if (/^\s*[-*] /.test(l)) return `<li>${l.replace(/^\s*[-*] /, '')}</li>`;
-    return l.trim() ? `<p>${l}</p>` : '';
-  }).join('').replace(/`([^`]+)`/g, '<code>$1</code>');
+  // minimal markdown: headings, bullets, pipe tables, **bold**, inline code; everything escaped first
+  const out = []; let tbl = null;
+  const flush = () => { if (tbl) { out.push(`<table class="hm" style="margin:4px 0;width:100%">${tbl.join('')}</table>`); tbl = null; } };
+  for (const l of esc(t || '').split(/\n/)) {
+    if (/^\s*\|/.test(l)) {
+      if (/^\s*\|[\s|:-]+\|\s*$/.test(l)) continue;           // separator row
+      const cells = l.trim().replace(/^\||\|$/g, '').split('|');
+      const tag = tbl ? 'td' : 'th';
+      tbl = tbl || [];
+      tbl.push('<tr>' + cells.map(c => `<${tag} style="text-align:left;vertical-align:top">${c.trim()}</${tag}>`).join('') + '</tr>');
+      continue;
+    }
+    flush();
+    if (/^#{1,3} /.test(l)) out.push(`<h3>${l.replace(/^#+ /, '')}</h3>`);
+    else if (/^\s*[-*] /.test(l)) out.push(`<li>${l.replace(/^\s*[-*] /, '')}</li>`);
+    else if (l.trim()) out.push(`<p>${l}</p>`);
+  }
+  flush();
+  return out.join('').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 }
 window.SO2_about = function (el) {
   const A = window.SO2; if (!A) return;

@@ -150,4 +150,7 @@ tbody tr.sel{background:var(--sel)}
   td,th{padding:6px 5px}
   .drawer{width:100vw}
   .mgrid-wrap{border-right:0}
+  .mrow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mc .l{white-space:normal;height:2.7em;overflow:hidden}
 }
+.drawer td,.drawer th{white-space:normal;word-break:break-word}

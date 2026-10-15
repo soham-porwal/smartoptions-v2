@@ -31,7 +31,8 @@
   const safeURL = u => /^https?:\/\//i.test(u || '') ? esc(u) : '#';
   let api, page, sort = {key:'opp', dir:-1}, query = '', lastData, status = '';
   const initialHash = new URLSearchParams(location.hash.slice(1));
-  const defaultLanding = !initialHash.has('tab') && !initialHash.has('t') && !initialHash.has('s') && !initialHash.has('open');
+  // Flow (R6) owns default landing; Overview opens only when asked for (#tab=overview).
+  const defaultLanding = false;
   function notice(message, error) {
     if (message != null) status = message;
     if (error) console.warn('[R5 watchlist]', message, error.name);
@@ -79,7 +80,7 @@
       const payroll = find('payrolls');
       const secondary = id==='unemployment' ? `Payrolls ${payroll ? signed(payroll.v,0)+'k · '+esc(payroll.period || 'period n/a') : 'unavailable'} · consensus unavailable` : id==='effective_fed_funds' ? (event ? `Next FOMC ${esc(event.scheduled_et.slice(0,10))} · ${Math.ceil((+new Date(event.scheduled_et)-Date.now())/86400000)}d` : 'Next FOMC unavailable') : 'Δ from previous observation';
       const title = `${o.provider || 'provider unavailable'} · ${o.series || id} · retrieved ${o.retrieved_at || 'unavailable'} · ${o.note || ''}`;
-      return `<article class="ov-macro-item"><div class="ov-macro-label">${esc(label)} <span class="ov-status ${o.status==='ok'?'':'ov-warning'}">${esc(o.status)}</span></div><div class="ov-macro-number"><strong>${fmt(o.v,id==='vix'?2:2)}<small>${unit}</small></strong><span>${finite(change)?(change>0?'↑':change<0?'↓':'→')+' '+fmt(Math.abs(change),2)+' '+changeUnit:'Δ unavailable'}</span></div>${spark(o.h)}<div class="ov-period">${esc(o.period || o.date || 'period unavailable')} <a href="${safeURL(o.url)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">${esc(o.series || 'Source')} ↗</a></div><div class="ov-secondary" title="${esc(id==='unemployment' && payroll ? `${payroll.provider} · ${payroll.series} · ${payroll.unit} · retrieved ${payroll.retrieved_at}` : secondary)}">${secondary}${id==='effective_fed_funds'&&event?` <a href="${safeURL(event.source_url)}" target="_blank" rel="noopener noreferrer" title="FOMC official calendar">↗</a>`:''}</div></article>`;
+      return `<article class="ov-macro-item"><div class="ov-macro-label">${esc(label)} <span class="ov-status ${o.status==='ok'?'':'ov-warning'}">${esc(o.status)}</span></div><div class="ov-macro-number"><strong>${fmt(o.v,id==='vix'?2:2)}<small>${unit}</small></strong><span>${finite(change)?(change>0?'↑':change<0?'↓':'→')+' '+fmt(Math.abs(change),changeUnit==='bp'?0:2)+' '+changeUnit:'Δ unavailable'}</span></div>${spark(o.h)}<div class="ov-period">${esc(o.period || o.date || 'period unavailable')} <a href="${safeURL(o.url)}" target="_blank" rel="noopener noreferrer" title="${esc(title)}">${esc(o.series || 'Source')} ↗</a></div><div class="ov-secondary" title="${esc(id==='unemployment' && payroll ? `${payroll.provider} · ${payroll.series} · ${payroll.unit} · retrieved ${payroll.retrieved_at}` : secondary)}">${secondary}${id==='effective_fed_funds'&&event?` <a href="${safeURL(event.source_url)}" target="_blank" rel="noopener noreferrer" title="FOMC official calendar">↗</a>`:''}</div></article>`;
     }).join('');
     const local = root.SmartOptionsImport && root.SmartOptionsImport.getData();
     if (local && local.series) for (const s of local.series) {
@@ -126,6 +127,8 @@
     page=document.createElement('main');page.id='pg-overview';page.hidden=true;
     page.innerHTML=`<section class="ov-watch"><div class="ov-toolbar"><div><h1>Watchlist <span id="ov-count"></span></h1><p>Price & fundamentals · Sam’s top 25 Opportunity scores, SmartOptions snapshot 2026-07-25</p></div><div class="ov-tools"><input id="ov-search" type="search" aria-label="Filter watchlist" placeholder="Filter watchlist"><form id="ov-add"><input id="ov-symbol" aria-label="Ticker to pin" list="ov-datalist" placeholder="Pin ticker" maxlength="15"><datalist id="ov-datalist"></datalist><button type="submit" title="Pin ticker to watchlist">+</button></form><button id="ov-add-data">Add data</button></div></div><div id="ov-warning" role="status"></div><div class="ov-table-scroll"><table id="ov-table"><thead id="ov-thead"></thead><tbody id="ov-tbody"></tbody></table><div id="ov-empty" hidden>No matching watchlist symbols. Pin a ticker or add a file.</div></div></section><section class="ov-macro-section"><div class="ov-section-label">Macro context <span>Observation periods shown · source details on hover · changes are not trading signals</span></div><div id="ov-macro"></div></section><footer class="ov-foot">Snapshot data, not live quotes · missing = unavailable · educational analysis <span id="ov-local-status">Your imports stay in this browser</span></footer>`;
     $('#pg-markets').before(page);
+    // Keep body class / page in step with whichever tab is on (Flow and app.js switch tabs without telling us).
+    new MutationObserver(()=>{const on=tab.classList.contains('on');document.body.classList.toggle('so-overview',on);if(!on)page.hidden=true;}).observe(tab,{attributes:true,attributeFilter:['class']});
     $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;if(b.dataset.tab==='overview'){e.stopImmediatePropagation();show(true);}else show(false);},true);
     page.addEventListener('click',e=>{
       const unpin=e.target.closest('[data-unpin]');if(unpin){root.SmartOptionsWatchlist.remove(unpin.dataset.unpin);return;}

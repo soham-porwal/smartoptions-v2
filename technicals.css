@@ -21,6 +21,7 @@
 .tc-ax { fill: var(--fg3); font-size: 9px; }
 .tc-empty { color: var(--fg3); padding: 12px; }
 .tc-tbl { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.tc-tbl td { text-align: left; }
 .tc-tbl th { text-align: left; color: var(--fg3); font-weight: 600; border-bottom: 1px solid var(--line); padding: 3px 4px; }
 .tc-tbl td { border-bottom: 1px solid var(--line); padding: 3px 4px; vertical-align: top; }
 .tc-gh td { background: var(--bg3); font-weight: 700; color: var(--fg2); }
@@ -41,4 +42,13 @@
   .tc-tbl td { display: inline-block; border: 0; padding: 1px 4px; }
   .tc-tbl td.tc-p { display: block; }
   .tc-gh td { display: block; }
+}
+/* narrow host (the ticker detail pane): stack each indicator row */
+.r7-box { container-type: inline-size; }
+@container (max-width: 560px) {
+  .tc-tbl thead { display: none; }
+  .tc-tbl tr { display: block; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .tc-tbl td { display: inline-block; border: 0; padding: 1px 4px; }
+  .tc-tbl td.tc-p, .tc-gh td { display: block; }
+  .tc-l { white-space: normal; }
 }

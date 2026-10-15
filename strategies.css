@@ -53,4 +53,13 @@
 .st-q { font-size: 11px; color: var(--fg2); margin-top: 2px; font-variant-numeric: tabular-nums; }
 .st-svg { max-width: 720px; }
 .st-kv td { overflow-wrap: anywhere; }
+.st-kv { table-layout: fixed; }
+.st-kv td { white-space: normal; word-break: normal; }
+.st-kv td:first-child { width: 36%; white-space: normal; }
+.st-cmpg > div { min-width: 0; }
+.st-method, .st-rank-why { white-space: normal; overflow-wrap: anywhere; margin: 5px 0; color: var(--fg2); }
+.st-method summary, .st-rank-why summary { cursor: pointer; color: var(--fg); }
+.st-rank-why ul { padding-left: 18px; }
+#detail:has(> .r7-tabs) { overflow-y: auto; min-height: 0; }
+.r7-box.r7-wide { max-height: calc(100dvh - 80px); overscroll-behavior: contain; padding-bottom: 30px; }
 @media (max-width: 600px) { .r7-box.r7-wide { inset: 44px 4px 4px 4px; padding: 8px; } }

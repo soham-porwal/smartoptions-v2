@@ -425,17 +425,31 @@
     set_columns: a => ['set_columns', [a.columns || []]],
     apply_preset: a => ['apply_preset', [a.id]],
     set_chart: a => ['set_chart', [a.symbol, a.overlay || null, a.range || null]],
+    open_ticker_tab: a => ['open_ticker_tab', [a.symbol, a.tab]],
   };
   function ui_capabilities(m, args, ctx) {
     const api = ctx.api;
     if (!api) return {available: false, result: NOT_AVAILABLE};
-    const fns = Object.keys(UI_TOOLS).filter(k => typeof api[k] === 'function');
+    const fns = Object.keys(UI_TOOLS).concat(['get_technicals', 'recommend_strategy', 'strategy_library']).filter(k => typeof api[k] === 'function');
     let desc = null;
     try { desc = typeof api.describe === 'function' ? api.describe() : null; } catch (e) { desc = {error: String(e)}; }
     return {available: true, functions: fns, describe: desc};
   }
 
-  const DATA_TOOLS = {get_ticker, screen, get_macro, get_relations, get_calendar, get_regime, get_insights, scenario, ui_capabilities};
+  async function apiData(name, argv, m, ctx) {
+    const out = await callUi(ctx, name, argv);
+    if (!out.ok) return out;
+    if (out.result && out.result.error) return {error: out.result.error};
+    const result = out.result;
+    const cite = ctx.cite({label: name + (argv[0] ? ' · ' + argv[0] : '') + ' · stored dashboard inputs; model outputs are educational estimates',
+      source: 'SmartOptions dashboard ' + name, series: name,
+      as_of: result && result.asof || m.asof_session, url: null});
+    return {data: result, cite: [cite], method: name === 'recommend_strategy' ? 'Sum of documented strategy rule points; payoffs are model estimates, not market quotes.' : 'Dashboard API result; retain its method, inputs and provenance.'};
+  }
+  const DATA_TOOLS = {get_ticker, screen, get_macro, get_relations, get_calendar, get_regime, get_insights, scenario, ui_capabilities,
+    get_technicals: (m,a,c) => apiData('get_technicals',[a.symbol],m,c),
+    recommend_strategy: (m,a,c) => apiData('recommend_strategy',[a.symbol,a.options || {}],m,c),
+    strategy_library: (m,a,c) => apiData('strategy_library',[],m,c)};
 
   async function runTool(name, input, model, ctx) {
     try {
@@ -459,6 +473,10 @@
   const shockSchema = S({us10y_bps: {type: 'number', description: '10Y yield change in basis points'}, wti_pct: {type: 'number', description: 'WTI % change'},
     dxy_pct: {type: 'number', description: 'DXY % change'}, vix_pts: {type: 'number', description: 'VIX change in points'}, spy_pct: {type: 'number', description: 'SPY % change'}});
   const TOOL_SCHEMAS = [
+    {name: 'get_technicals', description: 'Stored technical indicators, trend regime, methods, inputs and as-of for a ticker. Missing stays missing.', input_schema: S({symbol:{type:'string'}},['symbol'])},
+    {name: 'recommend_strategy', description: 'Rank conditional educational strategy fits for a ticker from documented scoring rules; returns inputs, provenance and model estimates, never market quotes or orders.', input_schema: S({symbol:{type:'string'}, options:S({stance:{type:'string',enum:['bullish','neutral','bearish']},horizon_days:{type:'integer',minimum:1,maximum:365},risk_tolerance:{type:'string',enum:['low','medium','high']},top:{type:'integer',minimum:5,maximum:8}})},['symbol'])},
+    {name: 'strategy_library', description: 'Educational strategy library: view, fit, risks, payoff formulas and assignment caveats.', input_schema:S({})},
+    {name: 'open_ticker_tab', description: 'UI: show a ticker Overview, Technicals or Strategies tab. Use when asked to show strategies for a ticker.', input_schema:S({symbol:{type:'string'},tab:{type:'string',enum:['overview','technicals','strategies']}},['symbol','tab'])},
     {name: 'get_ticker', description: 'All dashboard fields for one ticker with provenance: price/returns, valuation, analyst, earnings date, ATM IV, Sam snapshot scores, macro sensitivities, last-session attribution, delayed quote. Use cite_map ids.',
       input_schema: S({symbol: {type: 'string'}}, ['symbol'])},
     {name: 'screen', description: 'Filter and sort dashboard tickers. Rows with a missing value are excluded by any filter on that value (counts reported). Earnings days are counted from today ET.',
@@ -660,7 +678,7 @@
   }
 
   // ---------------------------------------------------------------- DOM panel
-  const SUGGESTED = ['What changed in macro today?', 'Best CSP candidates with earnings > 14d away', 'Which names get hurt most if 10Y +25bp?', 'Set up my morning workflow'];
+  const SUGGESTED = ['Which names have the best risk-adjusted setups today and why?', 'Show strategies for AMZN', 'Why is the market lean bullish?', 'Which names get hurt most if 10Y +25bp?'];
 
   function store() { try { return root.localStorage; } catch (e) { return null; } }
   function getKey() { const s = store(); return s ? s.getItem(LS_KEY) || '' : ''; }
@@ -676,7 +694,7 @@
 
     const wrap = doc.createElement('div');
     wrap.innerHTML =
-      '<button type="button" id="soc-toggle" class="soc-toggle" title="Analyst chat">ASK</button>' +
+      '<button type="button" id="soc-toggle" class="soc-toggle" title="Analyst chat (/)">ASK</button>' +
       '<aside id="soc-panel" class="soc" aria-hidden="true" aria-label="SmartOptions analyst chat">' +
       '<div class="soc-hd"><span class="soc-tt">ANALYST</span><select class="soc-model" aria-label="Model">' +
       MODELS.map(x => '<option value="' + x.id + '">' + x.label + '</option>').join('') + '</select>' +
@@ -685,6 +703,8 @@
       '<div class="soc-row"><button type="button" class="soc-save">SAVE</button><button type="button" class="soc-forget">FORGET KEY</button></div>' +
       '<div class="soc-note">Stored only in this browser (localStorage) and sent only to api.anthropic.com. Do not use on a shared computer.</div></form>' +
       '<div class="soc-stat"></div><div class="soc-log" aria-live="polite"></div>' +
+      '<div class="soc-examples" style="display:flex;gap:6px;overflow-x:auto;flex-shrink:0;padding:5px 8px;white-space:nowrap" aria-label="Example prompts">' + SUGGESTED.map(s => '<button type="button" style="font-size:11px">' + esc(s) + '</button>').join('') + '</div>' +
+      '<div class="soc-key-hint soc-note" style="padding:4px 8px">Use your own Anthropic API key via KEY. It is stored only in your browser and sent only to Anthropic.</div>' +
       '<form class="soc-in"><textarea rows="2" placeholder="Ask about the dashboard  (Enter send, Esc close)"></textarea><button type="submit">ASK</button></form>' +
       '<div class="soc-disc">Research tool, not advice. Figures cite dashboard data; associations are not causes.</div></aside>';
     doc.body.appendChild(wrap);
@@ -699,6 +719,7 @@
       parts.push(dataErr ? 'data: ' + dataErr.message : dataModel ? 'data: session ' + dataModel.asof_session + ', ' + Object.keys(dataModel.tickers).length + ' tickers' : 'data: loading');
       parts.push(getKey() ? 'key: set' : 'key: not set');
       st.textContent = parts.join('  |  ');
+      $('.soc-key-hint').hidden = !!getKey();
     }
     function suggestions() {
       if (log.children.length) return;
@@ -710,6 +731,7 @@
     function open() { panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false'); doc.documentElement.classList.add('soc-open'); suggestions(); status(); ta.focus(); }
     function close() { panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true'); doc.documentElement.classList.remove('soc-open'); }
     $('#soc-toggle').addEventListener('click', () => panel.classList.contains('open') ? close() : open());
+    $('.soc-examples').addEventListener('click', e => { const b=e.target.closest('button'); if(b) { ta.value=b.textContent; ta.focus(); } });
     $('.soc-x').addEventListener('click', close);
     $('.soc-set').addEventListener('click', () => { settings.hidden = !settings.hidden; keyIn.value = ''; keyIn.placeholder = getKey() ? 'key saved (hidden) - paste to replace' : 'sk-ant-...'; });
     $('.soc-save').addEventListener('click', () => { const v = keyIn.value.trim(); if (v && ls) ls.setItem(LS_KEY, v); keyIn.value = ''; settings.hidden = true; status(); });

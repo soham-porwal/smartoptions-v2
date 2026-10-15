@@ -319,14 +319,15 @@ function statsHtml(p) {
     <tr><td>Return on risk</td><td>${p.returnOnRisk != null ? (100 * p.returnOnRisk).toFixed(0) + '%' : 'n/a (unlimited side)'}</td></tr>
     ${p.expMove ? `<tr><td>Expected move (1 sigma)</td><td>${p.expMove.lo.toFixed(2)} - ${p.expMove.hi.toFixed(2)} by ${p.days}d</td></tr>` : ''}
     ${p.probAbove.length ? `<tr><td>Prob. finish above</td><td>${p.probAbove.map(x => `${x.k}: ${pct(x.p)}`).join(' · ')}</td></tr>` : ''}
-    <tr><td>Method</td><td class="dim">${esc(p.method)}</td></tr></table>`;
+    </table><details class="st-method"><summary>How computed</summary><div class="dim">${esc(p.method)}</div></details>`;
 }
-function cardHtml(s, x, sel) {
+function cardHtml(s, x, sel, context) {
   return `<div class="st-card${sel ? ' st-sel' : ''}" data-id="${s.id}">
     <div class="st-ch"><label title="add to compare (max 3)"><input type="checkbox" data-cmp="${s.id}"${sel ? ' checked' : ''}></label>
       <b>${esc(s.name)}</b> <span class="st-fam">${esc(s.family)} · ${esc(s.level)}</span>${x ? ` <span class="st-score" title="sum of rule points">score ${x.score}</span>` : ''}</div>
     <div class="st-plain">${esc(s.plain)}</div>
     ${x ? `<div class="st-parts">${x.parts.map(p => `<span class="st-pt ${p.points > 0 ? 'up' : p.points < 0 ? 'dn' : ''}" title="${esc((RULES.find(R => R.id === p.rule) || {}).desc || '')}">${esc(p.label)} ${p.points > 0 ? '+' : ''}${p.points}</span>`).join('')}</div>
+      <details class="st-rank-why"><summary>Why this rank? Score ${x.score}</summary><div>${esc(context || 'Context unavailable')}</div><ul>${x.parts.map(p => `<li><b>${esc(p.label)}: ${p.points > 0 ? '+' : ''}${p.points}</b> — ${esc((RULES.find(r => r.id === p.rule) || {}).desc || 'Rule unavailable')}</li>`).join('')}</ul><div>Rank = sum of rule points; ties by strategy name. Educational fit, not expected return.</div></details>
       <div class="st-flip dim">What would change it: ${esc(x.flip)}</div>
       <div class="st-q">${x.payoff.unavailable ? `<span class="dim">payoff: ${esc(x.payoff.unavailable)}</span>` : x.payoff.strikes == null ? '' : `model: ${x.payoff.net >= 0 ? 'credit ' + money(x.payoff.net) : 'debit ' + money(-x.payoff.net)}/sh · max loss ${money(x.payoff.maxLoss)} · max gain ${money(x.payoff.maxGain)} · POP ${pct(x.payoff.pop)}${x.payoff.strikes.length ? ' · strikes ' + x.payoff.strikes.join('/') : ''}`}</div>` : ''}
     <details class="st-more"><summary>View, fit, payoff, risks</summary>
@@ -354,6 +355,7 @@ function render(el, base) {
   const f = UI.form = UI.form && UI.form.ticker === base.ticker ? UI.form : {ticker: base.ticker, stance: base.trend === 'up' ? 'bullish' : base.trend === 'down' ? 'bearish' : 'neutral', horizon_days: base.iv_days || 30, risk_tolerance: 'medium'};
   const ctx = Object.assign({}, base, {stance: f.stance, horizon_days: f.horizon_days, risk_tolerance: f.risk_tolerance});
   const rec = recommend(ctx), P = id => payoff(id, {S: ctx.price, iv: ctx.iv, days: ctx.horizon_days, r: ctx.r});
+  const rankContext = `${base.ticker} · stance ${rec.inputs.stance} · trend ${rec.inputs.trend || 'unavailable'} · ATM IV ${isNum(rec.inputs.iv) ? rec.inputs.iv.toFixed(2) + '%' : 'unavailable'} · realized vol ${isNum(rec.inputs.realized_vol) ? rec.inputs.realized_vol.toFixed(2) + '%' : 'unavailable'} · IV/RV ${isNum(rec.inputs.iv_rv) ? rec.inputs.iv_rv.toFixed(2) : 'unavailable'} · regime ${isNum(rec.inputs.regime) ? rec.inputs.regime : 'unavailable'} · volatility regime ${rec.inputs.vol_regime || 'unavailable'} · earnings in ${isNum(rec.inputs.days_to_earnings) ? rec.inputs.days_to_earnings + ' days' : 'unavailable'} · horizon ${rec.inputs.horizon_days} days · risk tolerance ${rec.inputs.risk_tolerance}. Sources / as-of: ${Object.entries(base.prov || {}).map(([k,v]) => k.replace(/_/g,' ') + ': ' + v).join(' · ')}.`;
   let cmp = UI.cmp.filter(id => BY[id]).slice(0, 3);
   if (!UI.cmpTouched && !cmp.length) cmp = rec.ranked.filter(x => !x.payoff.unavailable).slice(0, 2).map(x => x.id); // show the top payoffs by default
   const sel = (k, opts) => `<select data-f="${k}">${opts.map(o => `<option${f[k] === o ? ' selected' : ''}>${o}</option>`).join('')}</select>`;
@@ -369,7 +371,7 @@ function render(el, base) {
     ${cmp.length ? `<div class="st-cmp"><b>Compare</b> ${cmp.map((id, j) => `<span style="color:${COLORS[j]}">${esc(BY[id].name)}</span>`).join(' · ')} <button class="st-btn" data-act="clear">clear</button>
       ${payoffSvg(cmp.map(P), ctx.price)}<div class="st-cmpg">${cmp.map(id => `<div><b>${esc(BY[id].name)}</b>${statsHtml(P(id))}</div>`).join('')}</div></div>` : '<div class="dim st-hint">Tick up to 3 strategies to draw and compare their payoffs.</div>'}
     <h4>Ranked for this context (top ${rec.ranked.length} of ${LIB.length})</h4>
-    <div class="st-list">${rec.ranked.map(x => cardHtml(BY[x.id], x, cmp.includes(x.id))).join('')}</div>
+    <div class="st-list">${rec.ranked.map(x => cardHtml(BY[x.id], x, cmp.includes(x.id), rankContext)).join('')}</div>
     <details class="st-why"><summary>Why not the others (${rec.whyNot.length})</summary><ul>${rec.whyNot.map(w => `<li><b>${esc(w.name)}</b> (score ${w.score}): ${esc(w.why)}</li>`).join('')}</ul></details>
     ${UI.showLib ? `<h4>Full library</h4><div class="st-list">${LIB.map(s => cardHtml(s, null, cmp.includes(s.id))).join('')}</div>` : ''}
   </div>`;

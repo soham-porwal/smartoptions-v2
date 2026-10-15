@@ -52,3 +52,17 @@
 .ov-earn time,.ov-earn small{display:none}.ov-earn b{font-size:9px}
 }
 .ov-dim{color:var(--fg3)}
+.ov-analyst-why { position: relative; }
+.ov-analyst-why summary { cursor: pointer; list-style: none; }
+.ov-analyst-why summary::after { content: ' ⓘ'; color: var(--fg3); }
+.ov-analyst-inputs { white-space: normal; text-align: left; line-height: 1.5; max-width: 350px; padding: 8px; color: var(--fg2); background: var(--bg2); border: 1px solid var(--line); }
+@media(max-width:820px){
+  #pg-overview,.ov-watch,.ov-table-scroll,.ov-tools,#ov-search,#ov-add { min-width:0; max-width:100%; }
+  .ov-tools { flex-wrap:wrap; }
+  .ov-tools #ov-search { width:100%; flex:1 1 100%; }
+  #ov-add { flex:1; } .ov-tools #ov-add input { width:0; flex:1; }
+  .so-overview #hdr .brand { flex:0 0 auto; } .so-overview #hdr .hbtns { width:100%; justify-content:flex-end; }
+  .so-overview #tabs { min-width:0; } .so-overview #hdr .brand .dim { display:none; }
+  #ov-table tr:has(.ov-analyst-why[open]) td[data-label=Analyst] { grid-column:1/-1; grid-row:3; }
+  .ov-analyst-inputs { max-width:100%; }
+}

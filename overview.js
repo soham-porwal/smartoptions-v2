@@ -42,9 +42,13 @@
   }
   function tooltip(r, field, unit) {
     const states = r.st || {};
-    return esc(`Yahoo Finance · ${r.t} · ${field} · ${unit || 'ratio'} · price session ${r.pxd || 'unavailable'} · fundamentals retrieved ${r.rat || 'unavailable'} · status ${states[field] || 'missing'}${field === 'peg' ? ' · ' + (r.pegm || 'method unavailable') : ''}`);
+    return esc(`Yahoo Finance · ${r.t} · ${field}${field === 'pe_forward' ? ' (forwardPE)' : ''} · ${unit || 'ratio'} · price session ${r.pxd || 'unavailable'} · fundamentals retrieved ${r.rat || 'unavailable'} · status ${states[field] || 'missing'}${field === 'peg' ? ' · ' + (r.pegm || 'method unavailable') : ''} · source https://finance.yahoo.com/quote/${encodeURIComponent(r.t)}/key-statistics/`);
   }
-  function cell(r, field, value, unit) { return `<span title="${tooltip(r,field,unit)}">${fmt(value)}</span>`; }
+  function cell(r, field, value, unit) {
+    const peg = field === 'peg';
+    const title = tooltip(r,field,unit) + (peg ? esc(` · raw PEG ${finite(value) ? value : 'unavailable'} · negative/low growth distorts PEG · display cap 10 (display only, raw value retained)`) : '');
+    return `<span title="${title}">${peg && finite(value) && value > 10 ? '&gt;10' : fmt(value)}</span>`;
+  }
   function range(r) {
     if (![r.lo,r.hi,r.px].every(finite) || r.hi <= r.lo) return '<span title="52-week range unavailable from provider">—</span>';
     const p = Math.max(0, Math.min(100, (r.px-r.lo)/(r.hi-r.lo)*100));
@@ -61,7 +65,7 @@
   }
   function analyst(r) {
     if (!r.rating && !finite(r.up)) return '<span title="Analyst rating and target unavailable from provider">—</span>';
-    return `<span class="ov-analyst" title="${tooltip(r,'analyst','target USD; upside %')} · target ${fmt(r.tgt)} · ${fmt(r.nan,0)} analysts"><b>${esc((r.rating || 'unrated').replace(/_/g,' '))}</b><span class="${cls(r.up)}">${signed(r.up,1)}${finite(r.up)?'%':''}</span></span>`;
+    return `<details class="ov-analyst-why"><summary class="ov-analyst" title="${tooltip(r,'analyst','target USD; upside %')} · target ${fmt(r.tgt)} · ${fmt(r.nan,0)} analysts"><b>${esc((r.rating || 'unrated').replace(/_/g,' '))}</b><span class="${cls(r.up)}">${signed(r.up,1)}${finite(r.up)?'%':''}</span></summary><div class="ov-analyst-inputs">${esc(r.t)} · Yahoo Finance provider rating: ${esc(r.rating || 'unavailable')} (shown verbatim; no dashboard rating threshold). Target ${fmt(r.tgt)} USD · price ${fmt(r.px)} USD · ${fmt(r.nan,0)} analysts. Upside = (target / price − 1) × 100 = ${signed(r.up,1)}%. Price as of ${esc(r.pxd || 'unavailable')} · fundamentals retrieved ${esc(r.rat || 'unavailable')}. <a href="https://finance.yahoo.com/quote/${encodeURIComponent(r.t)}/analysis/" target="_blank" rel="noopener">Source</a></div></details>`;
   }
   function spark(history) {
     const v = (history || []).map(p => Array.isArray(p) ? p[1] : p).filter(finite);
@@ -133,12 +137,13 @@
     const tab=document.createElement('button');tab.id='ov-tab';tab.textContent='Overview';tab.dataset.tab='overview';{const fl=$('#fl-tab');if(fl)fl.after(tab);else $('#tabs').prepend(tab);}
     const analyst=$('#tabs [data-tab="markets"]');if(analyst) analyst.textContent='Analyst';
     page=document.createElement('main');page.id='pg-overview';page.hidden=true;
-    page.innerHTML=`<section class="ov-watch"><div class="ov-toolbar"><div><h1>Watchlist <span id="ov-count"></span></h1><p>Price & fundamentals · Sam’s top 25 Opportunity scores, SmartOptions snapshot 2026-07-25</p></div><div class="ov-tools"><input id="ov-search" type="search" aria-label="Filter watchlist" placeholder="Filter watchlist"><form id="ov-add"><input id="ov-symbol" aria-label="Ticker to pin" list="ov-datalist" placeholder="Pin ticker" maxlength="15"><datalist id="ov-datalist"></datalist><button type="submit" title="Pin ticker to watchlist">+</button></form><button id="ov-add-data">Add data</button></div></div><div id="ov-warning" role="status"></div><div class="ov-table-scroll"><table id="ov-table"><thead id="ov-thead"></thead><tbody id="ov-tbody"></tbody></table><div id="ov-empty" hidden>No matching watchlist symbols. Pin a ticker or add a file.</div></div></section><section class="ov-macro-section"><div class="ov-section-label">Macro context <span>Observation periods shown · source details on hover · changes are not trading signals</span></div><div id="ov-macro"></div></section><footer class="ov-foot">Snapshot data, not live quotes · missing = unavailable · educational analysis <span id="ov-local-status">Your imports stay in this browser</span></footer>`;
+    page.innerHTML=`<section class="ov-watch"><div class="ov-toolbar"><div><h1>Watchlist <span id="ov-count"></span></h1><p>Price & fundamentals · Initially Sam’s top 25 Opportunity scores (2026-07-25). Select a ticker to explore; pin your own names.</p></div><div class="ov-tools"><input id="ov-search" type="search" aria-label="Filter watchlist" placeholder="Filter watchlist"><form id="ov-add"><input id="ov-symbol" aria-label="Ticker to pin" list="ov-datalist" placeholder="Pin ticker" maxlength="15"><datalist id="ov-datalist"></datalist><button type="submit" title="Pin ticker to watchlist">+</button></form><button id="ov-add-data">Add data</button></div></div><div id="ov-warning" role="status"></div><div class="ov-table-scroll"><table id="ov-table"><thead id="ov-thead"></thead><tbody id="ov-tbody"></tbody></table><div id="ov-empty" hidden>No matching watchlist symbols. Pin a ticker or add a file.</div></div></section><section class="ov-macro-section"><div class="ov-section-label">Macro context <span>Observation periods shown · source details on hover · changes are not trading signals</span></div><div id="ov-macro"></div></section><footer class="ov-foot">Snapshot data, not live quotes · missing = unavailable · educational analysis <span id="ov-local-status">Your imports stay in this browser</span> · <a href="legacy/index.html" target="_blank" rel="noopener">Original screener</a></footer>`;
     $('#pg-markets').before(page);
     // Keep body class / page in step with whichever tab is on (Flow and app.js switch tabs without telling us).
     new MutationObserver(()=>{const on=tab.classList.contains('on');document.body.classList.toggle('so-overview',on);if(!on)page.hidden=true;}).observe(tab,{attributes:true,attributeFilter:['class']});
     $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;if(b.dataset.tab==='overview'){e.stopImmediatePropagation();show(true);}else show(false);},true);
     page.addEventListener('click',e=>{
+      if(e.target.closest('.ov-analyst-why')) return;
       const unpin=e.target.closest('[data-unpin]');if(unpin){root.SmartOptionsWatchlist.remove(unpin.dataset.unpin);return;}
       const th=e.target.closest('[data-sort]');if(th){const key=th.dataset.sort;sort={key,dir:sort.key===key?-sort.dir:key==='t'||key==='er'?1:-1};render();return;}
       const row=e.target.closest('[data-overview-t]');if(row){e.preventDefault();openTicker(row.dataset.overviewT);}

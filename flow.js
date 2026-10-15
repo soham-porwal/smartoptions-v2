@@ -70,7 +70,7 @@
     add('spy200', 'SPY vs 200-day avg', fin(px) && fin(s200) ? 100 * (px / s200 - 1) : null, fin(px) && fin(s200) ? `${px.toFixed(2)} vs ${s200.toFixed(2)}` : null,
       fin(px) && fin(s200) ? (px > s200 ? 1 : -1) : null, 'above = +1, below = -1', spySrc, fin(s200) ? null : 'needs 200 sessions of SPY closes');
     const rg = (D.rel || {}).regime || {};
-    add('regime', 'Regime score (Sam method)', fin(rg.score) ? rg.score : null, fin(rg.score) ? `${rg.score} ${rg.tier || ''}`.trim() : null,
+    add('regime', 'Regime score (V2 proxy)', fin(rg.score) ? rg.score : null, fin(rg.score) ? `${rg.score} ${rg.tier || ''}`.trim() : null,
       fin(rg.score) ? (rg.score >= R.regimeBull ? 1 : rg.score <= R.regimeBear ? -1 : 0) : null, `>= ${R.regimeBull} = +1, <= ${R.regimeBear} = -1`,
       {provider: 'SmartOptions regime (VIX, A/D, new hi/lo)', series: 'rel.regime', period: D.asof_session, note: rg.method}, fin(rg.score) ? null : 'regime score missing');
     const vb = (D.rel || {}).vol_breadth || {}, br = vb.breadth_rsp_spy_20d || {};
@@ -116,11 +116,13 @@
     });
     return out.filter(x => fin(x.z)).sort((a, b) => Math.abs(b.z) - Math.abs(a.z)).slice(0, 3);
   }
-  function upcoming(D, names, nowMs, days) {
+  function upcoming(D, names, nowMs, days, watchTickers) {
     const end = nowMs + days * 864e5, ev = [];
+    const watched = new Set(watchTickers || names.map(r => r.t));
     for (const e of (D.calendar || [])) { const t = Date.parse(e.scheduled_et); if (fin(t) && t >= nowMs - 6 * 36e5 && t <= end) ev.push({kind: 'macro', type: e.type, title: e.title, t, src: e.source_url, status: e.status}); }
-    for (const r of names) if (r.er && fin(r.ern) && r.ern >= 0 && r.ern <= days) ev.push({kind: 'earn', type: 'EARN', title: `${r.t} earnings${r.ert ? ' ' + r.ert : ''}`, t: Date.parse(r.er + 'T12:00:00'), tk: r.t, src: r.ers});
-    return ev.sort((a, b) => a.t - b.t);
+    for (const r of names) if (r.er && fin(r.ern) && r.ern >= 0 && r.ern <= days) ev.push({kind: 'earn', type: 'EARN', title: `${r.t} earnings${r.ert ? ' ' + r.ert : ''}`, t: Date.parse(r.er + 'T12:00:00'), tk: r.t, src: r.ers, watched: watched.has(r.t)});
+    const priority = e => e.kind === 'macro' ? 0 : e.watched ? 1 : 2;
+    return ev.sort((a, b) => priority(a) - priority(b) || a.t - b.t || a.title.localeCompare(b.title));
   }
 
   /* ---------- L2 VOLATILITY ---------- */
@@ -225,7 +227,8 @@
   let A = null, R = null, step = Math.min(4, Math.max(1, +initialHash.get('fl') || 1)), scope = ['watch', 'movers', 'all'].includes(initialHash.get('fls')) ? initialHash.get('fls') : 'watch', sort = {k: 'sum', dir: -1}, open = {}, page = null, btn = null, M = null;
 
   function watchlist(D) {
-    try { const raw = localStorage.getItem(WKEY); if (raw) { const xs = JSON.parse(raw); if (Array.isArray(xs) && xs.length) return xs.map(String); } } catch (e) { /* fall through to default */ }
+    if (root.SmartOptionsWatchlist) return root.SmartOptionsWatchlist.get();
+    try { const raw = localStorage.getItem(WKEY); if (raw) { const xs = JSON.parse(raw); if (Array.isArray(xs)) return xs.map(String); } } catch (e) { /* fall through to default */ }
     return D.rows.filter(r => r.sam && fin(r.sam.opp)).sort((a, b) => b.sam.opp - a.sam.opp).slice(0, 25).map(r => r.t);
   }
   function scopeRows(D) {
@@ -239,7 +242,7 @@
     const vi = volInputs(D), vv = volVerdict(vi, R);
     const sp = sectorPE(D.rows);
     const rows = scopeRows(D).map(r => { const dr = nameDrivers(r, sp, R), nv = nameVerdict(dr, R); return {r, dr, nv, pb: playbook(r, nv, mv, vv, R, D.asof_session)}; });
-    M = {D, mi, mv, vi, vv, rows, shake: shakers(D), ev: upcoming(D, scopeRows(D), Date.now(), 7)};
+    M = {D, mi, mv, vi, vv, rows, shake: shakers(D), ev: upcoming(D, D.rows, Date.now(), 7, watchlist(D))};
   }
   function srcLine(s) { if (!s) return ''; return `${esc(s.provider || '')}${s.series ? ' · ' + esc(s.series) : ''}${s.period ? ' · as of ' + esc(s.period) : ''}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">source</a>` : ''}`; }
 
@@ -253,18 +256,18 @@
       [1, 'Market', mv.word, mv.cls, `votes ${mv.sum > 0 ? '+' : ''}${mv.sum} of ${mv.n} · regime ${fin(g('regime').value) ? g('regime').value : '—'} · 10Y ${fin(g('rates').value) ? (g('rates').value > 0 ? '+' : '') + g('rates').value.toFixed(0) + 'bp/20d' : '—'}`],
       [2, 'Volatility', vv.word + (vv.trend ? ', ' + vv.trend : ''), vv.cls, `VIX ${f(vi.vix, 1)} (p${fin(vi.vixPct) ? vi.vixPct : '—'}) · VRP ${f(vi.vrp, 1, 1)} · term ${f(vi.term, 2)}`],
       [3, 'Names', `${c('STRONG')} strong / ${c('MIXED')} mixed / ${c('WEAK')} weak`, 'neu', `${rows.length} in ${scopeName}${c('N/A') ? ' · ' + c('N/A') + ' n/a' : ''}`],
-      [4, 'Plan', `${pbc('Iron')} condor · ${pbc('Long')} strangle · ${pbc('CSP')} baseline`, 'neu', `${pbc('No')} no setup · education only`],
+      [4, 'Plan', `${pbc('Iron')} condor · ${pbc('Long')} strangle · ${pbc('CSP')} cash-secured put`, 'neu', `${pbc('No')} no setup · education only`],
     ];
     const steps = st.map(([n, h, v, cls, sub]) => `<button class="fl-step${step === n ? ' on' : ''}" data-step="${n}"><span class="fl-n">${n}</span><span class="fl-sh">${h}</span><span class="fl-v ${cls}">${esc(v)}</span><span class="fl-sub">${sub}</span></button>`).join('<div class="fl-arrow">↓</div>');
     // Morning read: the same measured verdicts restated as one chain + what to watch. No new judgement is added here.
     const sh = M.shake[0], nx = M.ev.find(e => e.kind === 'macro' && e.status !== 'released' && e.t >= Date.now());
     const nxWhen = nx ? new Date(nx.t).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York'}) + ' ET' : '';
-    const earnSoon = M.ev.filter(e => e.kind === 'earn').length;
+    const earnSoon = M.ev.filter(e => e.kind === 'earn' && e.watched).length;
     const read = `<div class="fl-read"><div class="fl-sec">Morning read</div>
-      <div>Market <b class="fl-v ${mv.cls}">${esc(mv.word)}</b> → vol <b class="fl-v ${vv.cls}">${esc(vv.word)}</b> → ${c('STRONG')} strong / ${c('WEAK')} weak → ${pbc('Iron')} condor, ${pbc('Long')} strangle, ${pbc('CSP')} baseline candidates.</div>
+      <div>Market <b class="fl-v ${mv.cls}">${esc(mv.word)}</b> → vol <b class="fl-v ${vv.cls}">${esc(vv.word)}</b> → ${c('STRONG')} strong / ${c('WEAK')} weak → ${pbc('Iron')} condor, ${pbc('Long')} strangle, ${pbc('CSP')} cash-secured put candidates.</div>
       ${sh ? `<div><span class="dim">Moving most:</span> <a href="#" data-sid="${esc(sh.id)}">${esc(sh.label)}</a> ${f(sh.chg, sh.unit === '%' ? 1 : 0, 1)} ${sh.unit}/20d <span class="dim">(z ${f(sh.z, 1, 1)})</span></div>` : ''}
       <div><span class="dim">Next macro:</span> ${nx ? esc(nx.title) + ' <span class="dim">' + esc(nxWhen) + '</span>' : '<span class="dim">none scheduled in 7d</span>'}</div>
-      <div><span class="dim">Earnings in scope, 7d:</span> ${earnSoon}</div>
+      <div><span class="dim">Watchlist earnings, 7d:</span> ${earnSoon}</div>
       <div class="fl-links"><a href="#" data-go="markets">Analyst screener →</a> <a href="#" data-go="macro">Macro grid →</a></div>
       <div class="dim fl-fine">Verdicts are rule outputs over measured inputs (Rules). Education, not advice; association, not causation.</div></div>`;
     return steps + read;
@@ -275,9 +278,10 @@
   }
   function pL1() {
     const {mv, mi, shake, ev} = M;
-    const EVMAX = 12, evMore = ev.length - EVMAX;
-    const evs = ev.length ? ev.slice(0, EVMAX).map(e => { const d = new Date(e.t); const when = e.kind === 'earn' ? d.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC'}) : d.toLocaleString('en-US', {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York'}) + ' ET';
-      return `<div class="fl-ev ${e.kind}${e.status === 'released' ? ' done' : ''}"${e.tk ? ` data-t="${esc(e.tk)}"` : ''}><b>${esc(e.type)}</b><span>${esc(e.title)}</span><span class="dim">${esc(when)}${e.status === 'released' ? ' · released' : ''}</span></div>`; }).join('') + (evMore > 0 ? `<div class="dim">+${evMore} more in the next 7 days (Analyst → Events column)</div>` : '') : '<div class="dim">No scheduled macro events or scoped earnings in the next 7 days.</div>';
+    const eventHtml = e => { const d = new Date(e.t); const when = e.kind === 'earn' ? d.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC'}) : d.toLocaleString('en-US', {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York'}) + ' ET';
+      return `<div class="fl-ev ${e.kind}${e.status === 'released' ? ' done' : ''}"${e.tk ? ` data-t="${esc(e.tk)}"` : ''} title="${esc(e.src || 'source unavailable')}"><b>${esc(e.type)}</b><span>${esc(e.title)}${e.watched ? ' · watchlist' : ''}</span><span class="dim">${esc(when)}${e.status === 'released' ? ' · released' : ''}</span></div>`; };
+    const primary = ev.filter(e => e.kind === 'macro' || e.watched), other = ev.filter(e => e.kind === 'earn' && !e.watched);
+    const evs = ev.length ? primary.map(eventHtml).join('') + (other.length ? `<details class="fl-more-events"><summary>+${other.length} more · other sourced S&P names</summary>${other.map(eventHtml).join('')}</details>` : '') : '<div class="dim">No scheduled macro events or sourced earnings in the next 7 days.</div>';
     const sh = shake.length ? `<table class="fl-t"><thead><tr><th>Factor moving most</th><th class="r">20d move</th><th class="r">z vs 1y</th><th>Most exposed (measured)</th><th>Next</th></tr></thead><tbody>${shake.map(s =>
       `<tr><td><a href="#" data-sid="${esc(s.id)}">${esc(s.label)}</a></td><td class="r">${f(s.chg, s.unit === '%' ? 1 : 0, 1)} ${s.unit}</td><td class="r ${Math.abs(s.z) >= 1.5 ? 'warn' : ''}">${f(s.z, 1, 1)}</td><td>${s.exposed.map(x => `<a href="#" data-t="${esc(x.ticker)}">${esc(x.ticker)}</a> <span class="dim">t ${f(x.t, 1)}</span>`).join(' · ') || '<span class="dim">none |t|>2</span>'}</td><td class="dim">${s.watch ? esc(s.watch.next_event || '') : ''}</td></tr>`).join('')}</tbody></table>
       <div class="fl-note">z = latest 20-session change vs all 20-session changes over the stored ~1y history. Exposure = per-ticker OLS t-stat (${esc((M.D.rel || {}).window || '')}). Association, not causation.</div>` : '<div class="dim">Factor histories missing; cannot rank movers.</div>';
@@ -297,7 +301,7 @@
     ];
     return `<div class="fl-h"><h2>2 · Volatility <span class="fl-v ${vv.cls}">${esc(vv.word)}</span></h2><span class="dim">${vv.trend ? 'VIX ' + vv.trend + ' over 5 sessions · ' : ''}${vv.premium ? esc(vv.premium) : ''}${vv.bumped ? ' · raised by backwardation' : ''}</span></div>
       <table class="fl-t fl-in"><thead><tr><th>Input</th><th class="r">Value</th><th>Rule / threshold (editable in Rules)</th><th>Source</th></tr></thead><tbody>${rows.map(x => `<tr><td>${x[0]}</td><td class="r">${x[1]}</td><td class="dim">${x[2]}</td><td class="dim">${x[3]}</td></tr>`).join('')}</tbody></table>
-      <div class="fl-note">Regime = market-wide 30-day implied vol (VIX), not direction and not single-stock IV. Per-name IV vs realized is used in step 4. Bands are our defaults, not an industry standard; change them in Rules.</div>`;
+      <div class="fl-note">As of ${esc(vi.source && vi.source.period || M.D.asof_session || 'unavailable')}. Regime = market-wide 30-day implied vol (VIX), not direction and not single-stock IV. Per-name IV vs realized is used in step 4. Bands are our defaults, not an industry standard; change them in Rules.</div>`;
   }
   function sortRows(xs) {
     const k = sort.k, d = sort.dir, val = x => k === 'sum' ? (x.nv.word === 'N/A' ? -99 : x.nv.sum) : k === 't' ? x.r.t : k === 'd1' ? x.r.d1 : k === 'm1' ? x.r.m1 : k === 'ern' ? x.r.ern : k === 'iv' ? x.r.iv : null;
@@ -319,14 +323,14 @@
     const xs = M.rows.filter(x => x.nv.word !== 'N/A').sort((a, b) => (a.pb.setup === 'No rule matched') - (b.pb.setup === 'No rule matched') || b.nv.sum - a.nv.sum);
     return `<div class="fl-h"><h2>4 · Plan <span class="dim">Conditional Playbook · education, not an order · association, not causation</span></h2>${scopeBar()}</div>
       <div class="fl-ctx dim">Market <b class="fl-v ${M.mv.cls}">${esc(M.mv.word)}</b> · Vol <b class="fl-v ${M.vv.cls}">${esc(M.vv.word)}</b> · IV/RV rich ≥ ${R.ivRich}, not rich ≤ ${R.ivCheap} · catalyst = earnings ≤ ${R.catalystDays}d · band = price ± price·σ·√(days/365), σ = ATM IV when stored, else 20d realized (labeled). Premiums not shown: no option chain stored (no quotes).</div>
-      <div class="fl-scroll"><table class="fl-t fl-plan"><thead><tr><th>Name</th><th>Name</th><th>Setup</th><th class="r">IV / RV20</th><th class="r">Band (±1σ, days)</th><th>Why</th><th></th></tr></thead><tbody>${xs.map(x => {
+      <div class="fl-scroll"><table class="fl-t fl-plan"><thead><tr><th>Ticker · price</th><th>Name verdict</th><th>Setup</th><th class="r">IV / RV20</th><th class="r">Band (±1σ, days)</th><th>Why</th><th></th></tr></thead><tbody>${xs.map(x => {
         const r = x.r, p = x.pb, i = p.inputs, o = open['p' + r.t];
         return `<tr><td><a href="#" data-t="${esc(r.t)}"><b>${esc(r.t)}</b></a> <span class="dim">${f(r.px, 2)}</span></td><td><span class="fl-v ${x.nv.cls}">${x.nv.word}</span></td><td><span class="fl-setup ${p.cls}">${esc(p.setup)}</span></td>
         <td class="r">${fin(i.iv) ? f(i.iv, 1) : NA('no ATM IV stored for this name')} / ${f(i.rv, 1)}${fin(i.ivrv) ? ' <span class="dim">(' + i.ivrv.toFixed(2) + ')</span>' : ''}</td>
         <td class="r">${p.band ? `${f(p.band[0], 2)} – ${f(p.band[1], 2)} <span class="dim">${p.dte}d${fin(i.iv) ? '' : ' RV'}</span>` : NA('price or vol missing')}</td>
         <td class="fl-whytxt" title="${esc(p.why)}">${esc(p.short || p.why)}</td><td><button class="fl-why" data-open="p${esc(r.t)}">${o ? '▾' : '▸'} inputs</button></td></tr>${o ? `<tr class="fl-drw"><td colspan="7">
           <div><b>Vol source</b> ${esc(p.volSrc || 'none')} · <b>expected move</b> ${fin(p.em) ? '±' + p.em.toFixed(2) : '—'} over ${p.dte}d · <b>earnings</b> ${fin(i.earn_days) ? i.earn_days + 'd (' + esc(r.er) + ', ' + esc(r.ers || '') + ')' : 'unknown'}</div>
-          <div><b>Why</b> ${esc(p.why)}</div><div><b>Invalidates</b> ${esc(p.invalid || 'n/a')}</div>${root.SmartOptionsStrategies ? root.SmartOptionsStrategies.flowHint({ticker: r.t, price: r.px, iv: i.iv, realized_vol: i.rv, days_to_earnings: i.earn_days, horizon_days: p.dte, name_word: x.nv.word}) : ''}<div class="dim">Drivers: ${x.dr.map(d => esc(d.label + ' ' + (fin(d.vote) ? (d.vote > 0 ? '+1' : d.vote < 0 ? '−1' : '0') : 'n/a'))).join(' · ')} · ${esc(p.label)}. Band is a model estimate from stored vol, not a quote.</div></td></tr>` : ''}`; }).join('')}</tbody></table></div>`;
+          <div><b>Why</b> ${esc(p.why)}</div><div><b>Invalidates</b> ${esc(p.invalid || 'n/a')}</div>${root.SmartOptionsStrategies ? root.SmartOptionsStrategies.flowHint({ticker: r.t, price: r.px, iv: i.iv, realized_vol: i.rv, days_to_earnings: i.earn_days, horizon_days: p.dte, name_word: x.nv.word}) : ''}<div class="dim">${esc(r.t)} · price as of ${esc(r.pxd || M.D.asof_session)} · fundamentals retrieved ${esc(r.rat || 'unavailable')}. Drivers: ${x.dr.map(d => esc(d.label + ': ' + d.detail + ' · ' + d.src)).join('<br>')} · ${esc(p.label)}. Band is a model estimate from stored vol, not a quote.</div></td></tr>` : ''}`; }).join('')}</tbody></table></div>`;
   }
   function rulesPanel() {
     return `<div class="fl-rules" id="fl-rules" hidden><div class="fl-sec">Rules (thresholds are our defaults; saved in this browser)</div><div class="fl-rgrid">${Object.keys(DEFAULT_RULES).map(k =>
@@ -337,7 +341,7 @@
     compute();
     const panel = [pL1, pL2, pL3, pL4][step - 1]();
     page.innerHTML = `<nav class="fl-rail">${rail()}<div class="fl-railft"><button data-rules="toggle">Rules</button> <span class="dim">as of ${esc(M.D.asof_session)}</span></div></nav>
-      <section class="fl-main">${rulesPanel()}${panel}</section>`;
+      <section class="fl-main"><div class="fl-guide"><span class="fl-guide-k">YOUR DAILY CHECK · ${step} OF 4</span><h1>${['Is the broad market supportive?', 'How much movement is priced in?', 'Which companies agree with the outlook?', 'Which conditional setups fit?'][step - 1]}</h1><p>${['Start with the market and next week’s catalysts. Then check volatility before selecting a company.', 'Compare implied and realized volatility. This measures movement, not whether prices will rise.', 'Review your watchlist, compare the drivers, and open Why to see the inputs behind each verdict.', 'Match the market, company and volatility context. Open Strategies for the wider library and payoff models.'][step - 1]}</p></div>${rulesPanel()}${panel}<div class="fl-progress">${step > 1 ? `<button data-next-step="${step - 1}">← ${['Market', 'Volatility', 'Companies'][step - 2]}</button>` : ''}${step < 4 ? `<button class="fl-next" data-next-step="${step + 1}">Next: ${['Volatility', 'Companies', 'Strategy'][step - 1]} →</button>` : '<button data-go="markets">Explore a company in Analyst →</button>'}</div></section>`;
     fit();
   }
   // fill the viewport below header + tape (their heights vary with wrapping), desktop only
@@ -345,7 +349,7 @@
   function wire() {
     page.addEventListener('click', e => {
       const t = e.target;
-      const s = t.closest('[data-step]'); if (s) { step = +s.dataset.step; render(); return; }
+      const s = t.closest('[data-step], [data-next-step]'); if (s) { step = +(s.dataset.step || s.dataset.nextStep); render(); return; }
       const sc = t.closest('[data-scope]'); if (sc) { scope = sc.dataset.scope; render(); return; }
       const so = t.closest('[data-sort]'); if (so) { const k = so.dataset.sort; sort = {k, dir: sort.k === k ? -sort.dir : (k === 't' ? 1 : -1)}; render(); return; }
       const op = t.closest('[data-open]'); if (op) { open[op.dataset.open] = !open[op.dataset.open]; render(); return; }

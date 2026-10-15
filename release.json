@@ -1,0 +1,20 @@
+{
+  "schema": "smartoptions.release.v1",
+  "release_id": "2026-10-15-v2-1530",
+  "built_at": "2026-10-15T22:20:19.208557+00:00",
+  "data_session": "2026-10-15",
+  "tickers": 365,
+  "python_tests": 218,
+  "javascript_tests": 133,
+  "sampled_values_passed": 30,
+  "sampled_provenance_findings": 0,
+  "sam_tickers_preserved": 343,
+  "sam_opportunity_formula_samples_passed": 10,
+  "core_sha256": "bca9c6cea76db2cdeba98c07604ee69bd17a0c58227e95abe4d16f30728879b9",
+  "notes": [
+    "Quotes are delayed; observation dates shown.",
+    "Sam scores remain the dated 2026-07-25 snapshot.",
+    "Strategy premiums are illustrative without a live option-chain key.",
+    "Full historical Quality/Trend/flags recomputation requires original input checkpoints."
+  ]
+}

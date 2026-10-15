@@ -480,7 +480,7 @@ function samBlock(r, d) {
     c.parts.forEach((p, i) => { const w = p.w * p.score / 100 / 100 * W; segs.push(`<rect x="${x}" y="0" width="${w}" height="12" fill="${cols[i]}" data-tip="${esc(`${p.k}: raw ${p.raw}${p.unit} → score ${p.score} x weight ${p.w}%\n${p.desc || ''}`)}"/>`); x += w; });
     segs.push(`<rect x="0" y="0" width="${W}" height="12" fill="none" stroke="#232a31"/>`);
     bar = `<svg width="100%" viewBox="0 0 ${W} 12" preserveAspectRatio="none" style="height:12px">${segs.join('')}</svg>
-      <div class="sub" style="padding:3px 0">${c.parts.map((p, i) => `<span style="color:${cols[i]}">■</span> ${p.k} ${p.score.toFixed(0)}`).join(' · ')}<br>base ${(c.parts.reduce((a, p) => a + p.w * p.score, 0) / 100).toFixed(1)} x Q ${c.qmult} x R ${c.rmult} = ${c.derived} (published ${c.published})</div>`;
+      <div class="sub" style="padding:3px 0">${c.parts.map((p, i) => `<span style="color:${cols[i]}">■</span> ${p.k} ${p.score.toFixed(0)}`).join(' · ')}<br>base ${c.base_score == null ? (c.parts.reduce((a, p) => a + p.w * p.score, 0) / 100).toFixed(2) : c.base_score.toFixed(2)} x Q ${c.qmult} x R ${c.rmult} = ${c.derived} (published ${c.published})</div>`;
   } else if (c) bar = `<div class="sub">components not shown: could not reproduce published score from EXPLAIN</div>`;
   return `<div class="blk"><div class="sech" data-tip="${esc("Sam's own scores, read-only. SmartOptions snapshot " + (s.asof || '2026-07-25') + '. Component split uses his documented formula and is shown only when it reproduces his published number.')}">Sam's score <span class="dim">snapshot 2026-07-25</span></div>
     <div style="padding:0 12px">

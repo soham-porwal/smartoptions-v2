@@ -329,9 +329,12 @@
     });
     const cites = [ctx.cite({label: 'Screen over dashboard tickers: price, valuation, analyst, earnings, ATM IV', source: 'Yahoo Finance via yfinance',
       series: 'all tickers', as_of: m.asof_session, url: 'https://finance.yahoo.com/'})];
-    if (f.min_sam_opp != null || f.sam_risk || f.sam_quality || sortKey.startsWith('sam')) cites.push(ctx.cite({label: 'SmartOptions snapshot 2026-07-25', source: "Sam's SmartOptions screener snapshot (read-only)", series: 'all tickers', as_of: '2026-07-25', url: null}));
+    let samCite=null;
+    if (out.some(r=>r.sam_quality!=null) || f.min_sam_opp != null || f.sam_risk || f.sam_quality || sortKey.startsWith('sam')) {samCite=ctx.cite({label: 'SmartOptions snapshot 2026-07-25', source: "Sam's SmartOptions screener snapshot (read-only)", series: 'all tickers', as_of: '2026-07-25', url: null});cites.push(samCite);}
     if (fac) cites.push(citeRel(m, null, ctx));
     return {matched: total, shown: out.length, sort: (desc ? '-' : '+') + sortKey, filters: f, excluded_by_filter: excluded, notes,
+      exclusions_method:'Counts are sequential in filter application order, not overlapping. Their sum equals the initial universe count minus matched. Missing values are grouped with failed thresholds, not counted separately.',
+      sam_snapshot_as_of:samCite?'2026-07-25':null,cite_map:{current_price_fundamentals_earnings:cites[0].id,sam_snapshot:samCite?samCite.id:null},
       days_reference: 'days_to_earnings counted from ' + etToday(ctx.now) + ' (ET)', factor_units: fac ? m.units[fac] : undefined,
       rows: out, cite: cites};
   }

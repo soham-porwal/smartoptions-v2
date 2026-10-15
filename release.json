@@ -1,11 +1,11 @@
 {
   "schema": "smartoptions.release.v1",
   "release_id": "2026-10-15-v2-evidence-workflow",
-  "built_at": "2026-10-15T23:26:54.318419+00:00",
+  "built_at": "2026-10-15T23:33:00.767085+00:00",
   "data_session": "2026-10-15",
   "tickers": 365,
-  "python_tests": 273,
-  "javascript_tests": 147,
+  "python_tests": 274,
+  "javascript_tests": 148,
   "sampled_values_passed": 30,
   "sampled_provenance_findings": 0,
   "sam_tickers_preserved": 343,
@@ -28,5 +28,7 @@
   "chat_confidence_component_tool": true,
   "chart_exploration": "chart point detail, any loaded ticker/macro overlay, historical exposures and same-date peers",
   "workflow": "question-led task branches; conditional evidence brief; sample Guide optional",
-  "confidence": "documented heuristic support score; no calibrated probability of profit"
+  "confidence": "documented heuristic support score; no calibrated probability of profit",
+  "chat_output_token_cap": 4096,
+  "chat_reasoning_effort": "low"
 }

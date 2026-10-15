@@ -57,7 +57,7 @@ function companyExposureHTML(symbol) {
 function render() {
   if (!box || !A) return;
   const sel = A.V.sel, isCompany = sel.kind === 't' && !!A.rowOf(sel.id);
-  box.querySelector('.ex-heading').textContent = 'Explore '+sel.id+' · details, overlays & related names';
+  box.querySelector('.ex-heading').textContent = 'Dig deeper into '+sel.id+' · charts, overlays & related names';
   const selectedPoint = point && point.selection.kind === sel.kind && point.selection.id === sel.id ? point : null;
   const o = A.obsOf(sel.id), r = A.rowOf(sel.id);
   box.querySelector('.ex-point').textContent = selectedPoint ? 'Selected chart observation: '+(typeof selectedPoint.time === 'string' ? selectedPoint.time : JSON.stringify(selectedPoint.time))+' · '+fmt(selectedPoint.value)+(selectedPoint.overlay?' · '+selectedPoint.overlay+' '+fmt(selectedPoint.overlay_value):'') : 'Click a chart point for its date and value. '+(o ? o.provider+' · '+o.series+' · '+o.unit+' · period '+o.period : 'Stored session '+(r && r.pxd || A.D().asof_session));

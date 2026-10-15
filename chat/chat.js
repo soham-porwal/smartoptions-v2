@@ -591,7 +591,7 @@
       '4. Regression coefficients are associations over a stated window, not causes. Say so when you use them.',
       "5. Sam's scores (Opportunity, Quality, Trend, Risk, Flags) are a read-only snapshot from 2026-07-25 - label them as such.",
       '6. Monthly/quarterly macro values carry their observation period; never imply they are new today.',
-      '7. Be short: numbers first, then bullets or a compact markdown table. No essays, no preamble. State the criteria and method you used in one line.',
+      '7. Start with the plain-language assessment and the most decision-relevant evidence. Keep the initial answer compact; do not dump indicators. Separate observation, conditional interpretation, alternatives and what could invalidate the thesis. The source entries and Data & dashboard actions retain detailed tool data and calculations; give the full math when the user asks for it.',
       '8. UI action tools change what the user sees on the dashboard. Use them when asked to organize, set up, filter or show something; call ui_capabilities first to learn the available panels/columns/presets. If a UI action returns "' + NOT_AVAILABLE + '", say so plainly.',
       '9. Adapt the workspace to the current task. The Market → Volatility → Companies → Strategy guide is only one optional example, never a required sequence. Users can start with any company, event, comparison or strategy. Use filters, columns, panels and saved workspaces to suit their question. Save or restore a layout when asked.',
       '10. A source marker does not make an interpretation true. Preserve the ticker, field, unit and observation date from the tool. Do not present predictions or model estimates as facts or certainty. Use explicit conditional language for scenarios. Copy or round returned numbers; do not silently derive new figures.',
@@ -683,7 +683,7 @@
     const headers = demo ? {'content-type': 'application/json'} : {
       'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json'};
-    if (demo) body = Object.assign({}, body, {model: demo.model, max_tokens: Math.min(body.max_tokens || 1024, 1024)});
+    if (demo) body = Object.assign({}, body, {model: demo.model, max_tokens: Math.min(body.max_tokens || 4096, 4096)});
     try {
       r = await safeFetch(url, {method: 'POST', headers, body: JSON.stringify(body)});
     } catch (e) { throw new Error((demo ? 'Demo connection unavailable. Turn on Tailscale and allow local-network access for this site in your browser, then try again. Your key connects directly without Tailscale. ' : 'Network error reaching Anthropic. ') + (e && e.message || e)); }
@@ -699,25 +699,29 @@
     hooks = hooks || {};
     const ctx = {registry: conv.registry, cite: c => conv.registry.add(c), now: cfg.now ? cfg.now() : new Date(), api: root.SmartOptionsAPI || null};
     conv.messages.push({role: 'user', content: question});
-    const base = {model: cfg.model || MODELS[0].id, max_tokens: cfg.max_tokens || 1500, system: systemPrompt(model), tools: TOOL_SCHEMAS};
+    const base = {model: cfg.model || MODELS[0].id, max_tokens: cfg.max_tokens || 4096, output_config:{effort:'low'}, system: systemPrompt(model), tools: TOOL_SCHEMAS};
     let rounds = 0;
     const trace = [];
     for (;;) {
       const body = Object.assign({}, base, {messages: conv.messages});
       if (rounds >= MAX_TOOL_ROUNDS) body.tool_choice = {type: 'none'};
       const res = await callApi(cfg, body);
+      if(res.stop_reason==='max_tokens')throw new Error('The response reached its length limit. Ask for a shorter brief or one part at a time. Dashboard actions already completed may still be visible.');
       conv.messages.push({role: 'assistant', content: res.content});
       const uses = (res.content || []).filter(b => b.type === 'tool_use');
       if (res.stop_reason !== 'tool_use' || !uses.length) {
         let text = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+        if(!text)throw new Error('The provider returned no answer. Try a narrower question. Dashboard actions already completed may still be visible.');
         let check = citationCheck(text, conv.registry);
         if (!check.ok) {
           // One text-only repair pass: never repeats actions or silently accepts
           // a marker as proof. Persistent failures remain visibly unverified.
           conv.messages.push({role:'user', content:'The dashboard consistency check found unsupported or uncited figures: '+JSON.stringify({uncited:check.uncited,unknown_refs:check.unknown_refs,unsupported_figures:check.unsupported_figures})+'. Rewrite the answer using only the completed tool results. Cite each numeric claim with its matching source. Remove unrelated figures; if a value is unavailable, just say not in the data. Do not repeat dashboard actions or invent evidence. Return only the corrected answer.'});
           const fixed = await callApi(cfg, Object.assign({}, base, {messages:conv.messages,tool_choice:{type:'none'}}));
+          if(fixed.stop_reason==='max_tokens')throw new Error('The corrected response reached its length limit. Ask for a shorter question. Dashboard actions already completed may still be visible.');
           conv.messages.push({role:'assistant',content:fixed.content});
           text = (fixed.content || []).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+          if(!text)throw new Error('The provider returned no corrected answer. Try a narrower question.');
           check = citationCheck(text,conv.registry);
         }
         return {text, trace, check, rounds, usage: res.usage || null};
@@ -900,6 +904,9 @@
           onTool: (name, input, out) => {
             const d = doc.createElement('div');
             d.textContent = name + ' ' + JSON.stringify(input || {}).slice(0, 120) + (out && out.error ? '  -> ' + out.error.slice(0, 120) : '');
+            const evidence=doc.createElement('details'), summary=doc.createElement('summary'), raw=doc.createElement('pre');
+            evidence.className='soc-evidence';summary.textContent='Dig deeper · tool data, methods & inputs';raw.textContent=JSON.stringify(out,null,2);
+            evidence.append(summary,raw);d.appendChild(evidence);
             tr.appendChild(d);
           }});
         ans.innerHTML = renderWarning(r.check) + renderMarkdown(r.text || '(empty answer)', turnId) + renderSources(r.check.refs, conv.registry, turnId);

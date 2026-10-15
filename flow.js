@@ -189,23 +189,24 @@
     const catalyst = fin(r.ern) && r.ern >= 0 && r.ern <= Math.max(R.catalystDays, fin(dteIv) ? dteIv : 0);
     const inputs = {name: nv.word, market: mv.word, vol: vv.word, iv, rv, ivrv, dte, em, earn_days: fin(r.ern) ? r.ern : null};
     const base = {inputs, band, em, dte, volSrc, label: 'association, not causation; education, not an order'};
-    if (nv.word === 'N/A') return Object.assign(base, {setup: 'No setup', cls: 'na', why: 'name has too few measured drivers', invalid: null});
+    if (nv.word === 'N/A') return Object.assign(base, {setup: 'No setup', cls: 'na', short: 'too few measured drivers', why: 'name has too few measured drivers', invalid: null});
     if (catalyst && fin(ivrv) && ivrv <= R.ivCheap)
-      return Object.assign(base, {setup: 'Long strangle candidate', cls: 'warn', why: `earnings in ${r.ern}d inside the window and IV/RV ${ivrv.toFixed(2)} <= ${R.ivCheap}: a catalyst is ahead and implied vol is not rich vs realized; a strangle pays only if the move exceeds the band.`,
+      return Object.assign(base, {setup: 'Long strangle candidate', cls: 'warn', short: `earnings ${r.ern === 0 ? 'today' : 'in ' + r.ern + 'd'} · IV/RV ${ivrv.toFixed(2)} not rich`, why: `earnings ${r.ern === 0 ? 'today' : 'in ' + r.ern + 'd'} inside the window and IV/RV ${ivrv.toFixed(2)} <= ${R.ivCheap}: a catalyst is ahead and implied vol is not rich vs realized; a strangle pays only if the move exceeds the band.`,
         invalid: `IV/RV rises above ${R.ivCheap} before entry, or the earnings date moves outside the window`});
     if (!catalyst && fin(ivrv) && ivrv >= R.ivRich && (nv.word === 'MIXED' || mv.word === 'Neutral') && vv.word !== 'Stress')
-      return Object.assign(base, {setup: 'Iron condor candidate', cls: 'up', why: `IV/RV ${ivrv.toFixed(2)} >= ${R.ivRich} (premium rich), no earnings inside ${R.catalystDays}d, and direction is not decided (${nv.word} name / ${mv.word} market): range-bound premium with defined risk.`,
+      return Object.assign(base, {setup: 'Iron condor candidate', cls: 'up', short: `IV/RV ${ivrv.toFixed(2)} rich · no earnings ≤ ${R.catalystDays}d · no clear direction`, why: `IV/RV ${ivrv.toFixed(2)} >= ${R.ivRich} (premium rich), no earnings inside ${R.catalystDays}d, and direction is not decided (${nv.word} name / ${mv.word} market): range-bound premium with defined risk.`,
         invalid: 'close outside the band, an earnings/news catalyst appears, or VIX term ratio goes above 1.0'});
     if (nv.word === 'STRONG' && mv.word !== 'Lean bearish' && !catalyst)
-      return Object.assign(base, {setup: 'CSP / covered call (baseline)', cls: 'neu', why: `STRONG name, market ${mv.word.toLowerCase()}, no earnings inside ${R.catalystDays}d: the baseline income setup (cash-secured put on a name you would own, or covered call if held).`,
+      return Object.assign(base, {setup: 'CSP / covered call (baseline)', cls: 'neu', short: `STRONG name · market ${mv.word.toLowerCase()} · no earnings ≤ ${R.catalystDays}d`, why: `STRONG name, market ${mv.word.toLowerCase()}, no earnings inside ${R.catalystDays}d: the baseline income setup (cash-secured put on a name you would own, or covered call if held).`,
         invalid: `name drops to MIXED/WEAK, market turns Lean bearish, or price closes below the lower band${band ? ' (' + band[0].toFixed(2) + ')' : ''}`});
     const miss = [];
     if (!fin(iv)) miss.push('no ATM IV stored for this name (IV/RV cannot be judged)');
-    if (catalyst) miss.push(`earnings in ${r.ern}d`);
+    if (catalyst) miss.push(r.ern === 0 ? 'earnings today' : `earnings in ${r.ern}d`);
     if (fin(ivrv) && ivrv > R.ivCheap && ivrv < R.ivRich) miss.push(`IV/RV ${ivrv.toFixed(2)} between ${R.ivCheap} and ${R.ivRich}`);
     if (nv.word === 'WEAK') miss.push('WEAK name: no bullish-premium baseline');
     if (mv.word === 'Lean bearish') miss.push('market Lean bearish');
-    return Object.assign(base, {setup: 'No rule matched', cls: 'na', why: miss.join('; ') || 'conditions for strangle / condor / baseline not met', invalid: null});
+    const why = miss.join('; ') || 'conditions for strangle / condor / baseline not met';
+    return Object.assign(base, {setup: 'No rule matched', cls: 'na', short: why, why, invalid: null});
   }
 
   function loadRules(storage) { try { return Object.assign({}, DEFAULT_RULES, JSON.parse(storage.getItem(RKEY) || '{}')); } catch (e) { return Object.assign({}, DEFAULT_RULES); } }
@@ -254,7 +255,19 @@
       [3, 'Names', `${c('STRONG')} strong / ${c('MIXED')} mixed / ${c('WEAK')} weak`, 'neu', `${rows.length} in ${scopeName}${c('N/A') ? ' · ' + c('N/A') + ' n/a' : ''}`],
       [4, 'Plan', `${pbc('Iron')} condor · ${pbc('Long')} strangle · ${pbc('CSP')} baseline`, 'neu', `${pbc('No')} no setup · education only`],
     ];
-    return st.map(([n, h, v, cls, sub]) => `<button class="fl-step${step === n ? ' on' : ''}" data-step="${n}"><span class="fl-n">${n}</span><span class="fl-sh">${h}</span><span class="fl-v ${cls}">${esc(v)}</span><span class="fl-sub">${sub}</span></button>`).join('<div class="fl-arrow">↓</div>');
+    const steps = st.map(([n, h, v, cls, sub]) => `<button class="fl-step${step === n ? ' on' : ''}" data-step="${n}"><span class="fl-n">${n}</span><span class="fl-sh">${h}</span><span class="fl-v ${cls}">${esc(v)}</span><span class="fl-sub">${sub}</span></button>`).join('<div class="fl-arrow">↓</div>');
+    // Morning read: the same measured verdicts restated as one chain + what to watch. No new judgement is added here.
+    const sh = M.shake[0], nx = M.ev.find(e => e.kind === 'macro' && e.status !== 'released' && e.t >= Date.now());
+    const nxWhen = nx ? new Date(nx.t).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York'}) + ' ET' : '';
+    const earnSoon = M.ev.filter(e => e.kind === 'earn').length;
+    const read = `<div class="fl-read"><div class="fl-sec">Morning read</div>
+      <div>Market <b class="fl-v ${mv.cls}">${esc(mv.word)}</b> → vol <b class="fl-v ${vv.cls}">${esc(vv.word)}</b> → ${c('STRONG')} strong / ${c('WEAK')} weak → ${pbc('Iron')} condor, ${pbc('Long')} strangle, ${pbc('CSP')} baseline candidates.</div>
+      ${sh ? `<div><span class="dim">Moving most:</span> <a href="#" data-sid="${esc(sh.id)}">${esc(sh.label)}</a> ${f(sh.chg, sh.unit === '%' ? 1 : 0, 1)} ${sh.unit}/20d <span class="dim">(z ${f(sh.z, 1, 1)})</span></div>` : ''}
+      <div><span class="dim">Next macro:</span> ${nx ? esc(nx.title) + ' <span class="dim">' + esc(nxWhen) + '</span>' : '<span class="dim">none scheduled in 7d</span>'}</div>
+      <div><span class="dim">Earnings in scope, 7d:</span> ${earnSoon}</div>
+      <div class="fl-links"><a href="#" data-go="markets">Analyst screener →</a> <a href="#" data-go="macro">Macro grid →</a></div>
+      <div class="dim fl-fine">Verdicts are rule outputs over measured inputs (Rules). Education, not advice; association, not causation.</div></div>`;
+    return steps + read;
   }
   function inputsTable(list) {
     return `<table class="fl-t fl-in"><thead><tr><th>Input</th><th class="r">Value</th><th class="c">Vote</th><th>Rule · source · as of</th></tr></thead><tbody>${list.map(i =>
@@ -299,21 +312,21 @@
         const r = x.r; const o = open['n' + r.t];
         return `<tr><td><a href="#" data-t="${esc(r.t)}"><b>${esc(r.t)}</b></a> <span class="dim">${esc((r.n || '').slice(0, 22))}</span></td><td class="dim">${esc(r.sec || '')}</td><td><span class="fl-v ${x.nv.cls}">${x.nv.word}</span> <span class="dim">${x.nv.sum > 0 ? '+' : ''}${x.nv.sum}/${x.nv.n}</span></td>
         <td>${x.dr.map(d => `<span class="fl-chip ${fin(d.vote) ? (d.vote > 0 ? 'up' : d.vote < 0 ? 'dn' : 'neu') : 'na'}" title="${esc(d.detail)}">${esc(d.chip)}</span>`).join('')}</td>
-        <td class="r ${fin(r.d1) ? (r.d1 >= 0 ? 'up' : 'dn') : ''}">${f(r.d1, 1, 1)}</td><td class="r ${fin(r.m1) ? (r.m1 >= 0 ? 'up' : 'dn') : ''}">${f(r.m1, 1, 1)}</td><td class="r">${fin(r.ern) ? r.ern + 'd' : NA('earnings date missing')}</td>
+        <td class="r ${fin(r.d1) ? (r.d1 >= 0 ? 'up' : 'dn') : ''}">${f(r.d1, 1, 1)}</td><td class="r ${fin(r.m1) ? (r.m1 >= 0 ? 'up' : 'dn') : ''}">${f(r.m1, 1, 1)}</td><td class="r">${fin(r.ern) ? (r.ern === 0 ? '<b class="warn">today</b>' : r.ern + 'd') : NA('earnings date missing')}</td>
         <td><button class="fl-why" data-open="n${esc(r.t)}">${o ? '▾' : '▸'} why</button></td></tr>${o ? `<tr class="fl-drw"><td colspan="8">${x.dr.map(d => `<div><b>${esc(d.label)}</b> ${voteCell(d.vote)} ${esc(d.detail)} <span class="dim">· ${esc(d.src)}${r.rat ? ' · retrieved ' + esc(r.rat) : ''}</span></div>`).join('')}</td></tr>` : ''}`; }).join('')}</tbody></table></div>`;
   }
   function pL4() {
     const xs = M.rows.filter(x => x.nv.word !== 'N/A').sort((a, b) => (a.pb.setup === 'No rule matched') - (b.pb.setup === 'No rule matched') || b.nv.sum - a.nv.sum);
     return `<div class="fl-h"><h2>4 · Plan <span class="dim">Conditional Playbook · education, not an order · association, not causation</span></h2>${scopeBar()}</div>
       <div class="fl-ctx dim">Market <b class="fl-v ${M.mv.cls}">${esc(M.mv.word)}</b> · Vol <b class="fl-v ${M.vv.cls}">${esc(M.vv.word)}</b> · IV/RV rich ≥ ${R.ivRich}, not rich ≤ ${R.ivCheap} · catalyst = earnings ≤ ${R.catalystDays}d · band = price ± price·σ·√(days/365), σ = ATM IV when stored, else 20d realized (labeled). Premiums not shown: no option chain stored (no quotes).</div>
-      <div class="fl-scroll"><table class="fl-t fl-plan"><thead><tr><th>Name</th><th>Name / Mkt / Vol</th><th>Setup</th><th class="r">IV / RV20</th><th class="r">Band (±1σ, days)</th><th>Why</th><th></th></tr></thead><tbody>${xs.map(x => {
+      <div class="fl-scroll"><table class="fl-t fl-plan"><thead><tr><th>Name</th><th>Name</th><th>Setup</th><th class="r">IV / RV20</th><th class="r">Band (±1σ, days)</th><th>Why</th><th></th></tr></thead><tbody>${xs.map(x => {
         const r = x.r, p = x.pb, i = p.inputs, o = open['p' + r.t];
-        return `<tr><td><a href="#" data-t="${esc(r.t)}"><b>${esc(r.t)}</b></a> <span class="dim">${f(r.px, 2)}</span></td><td><span class="fl-v ${x.nv.cls}">${x.nv.word}</span> · ${esc(i.market)} · ${esc(i.vol)}</td><td><span class="fl-setup ${p.cls}">${esc(p.setup)}</span></td>
+        return `<tr><td><a href="#" data-t="${esc(r.t)}"><b>${esc(r.t)}</b></a> <span class="dim">${f(r.px, 2)}</span></td><td><span class="fl-v ${x.nv.cls}">${x.nv.word}</span></td><td><span class="fl-setup ${p.cls}">${esc(p.setup)}</span></td>
         <td class="r">${fin(i.iv) ? f(i.iv, 1) : NA('no ATM IV stored for this name')} / ${f(i.rv, 1)}${fin(i.ivrv) ? ' <span class="dim">(' + i.ivrv.toFixed(2) + ')</span>' : ''}</td>
         <td class="r">${p.band ? `${f(p.band[0], 2)} – ${f(p.band[1], 2)} <span class="dim">${p.dte}d${fin(i.iv) ? '' : ' RV'}</span>` : NA('price or vol missing')}</td>
-        <td class="fl-whytxt">${esc(p.why)}</td><td><button class="fl-why" data-open="p${esc(r.t)}">${o ? '▾' : '▸'} inputs</button></td></tr>${o ? `<tr class="fl-drw"><td colspan="7">
+        <td class="fl-whytxt" title="${esc(p.why)}">${esc(p.short || p.why)}</td><td><button class="fl-why" data-open="p${esc(r.t)}">${o ? '▾' : '▸'} inputs</button></td></tr>${o ? `<tr class="fl-drw"><td colspan="7">
           <div><b>Vol source</b> ${esc(p.volSrc || 'none')} · <b>expected move</b> ${fin(p.em) ? '±' + p.em.toFixed(2) : '—'} over ${p.dte}d · <b>earnings</b> ${fin(i.earn_days) ? i.earn_days + 'd (' + esc(r.er) + ', ' + esc(r.ers || '') + ')' : 'unknown'}</div>
-          <div><b>Invalidates</b> ${esc(p.invalid || 'n/a')}</div><div class="dim">Drivers: ${x.dr.map(d => esc(d.label + ' ' + (fin(d.vote) ? (d.vote > 0 ? '+1' : d.vote < 0 ? '−1' : '0') : 'n/a'))).join(' · ')} · ${esc(p.label)}. Band is a model estimate from stored vol, not a quote.</div></td></tr>` : ''}`; }).join('')}</tbody></table></div>`;
+          <div><b>Why</b> ${esc(p.why)}</div><div><b>Invalidates</b> ${esc(p.invalid || 'n/a')}</div><div class="dim">Drivers: ${x.dr.map(d => esc(d.label + ' ' + (fin(d.vote) ? (d.vote > 0 ? '+1' : d.vote < 0 ? '−1' : '0') : 'n/a'))).join(' · ')} · ${esc(p.label)}. Band is a model estimate from stored vol, not a quote.</div></td></tr>` : ''}`; }).join('')}</tbody></table></div>`;
   }
   function rulesPanel() {
     return `<div class="fl-rules" id="fl-rules" hidden><div class="fl-sec">Rules (thresholds are our defaults; saved in this browser)</div><div class="fl-rgrid">${Object.keys(DEFAULT_RULES).map(k =>
@@ -344,6 +357,7 @@
         if (ru.dataset.rules === 'save') { const o = {}; page.querySelectorAll('[data-rule]').forEach(i => { const v = parseFloat(i.value); if (fin(v)) o[i.dataset.rule] = v; }); try { localStorage.setItem(RKEY, JSON.stringify(o)); } catch (er) { console.warn('[R6 flow] rules not saved', er.name); } render(); return; }
       }
       const tk = t.closest('[data-t]'); if (tk) { e.preventDefault(); A.showTab('markets'); A.select('t', tk.dataset.t); return; }
+      const go = t.closest('[data-go]'); if (go) { e.preventDefault(); A.showTab(go.dataset.go); return; }
       const sid = t.closest('[data-sid]'); if (sid) { e.preventDefault(); A.showTab('markets'); A.select('s', sid.dataset.sid); }
     });
   }

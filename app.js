@@ -9,7 +9,9 @@ const FLABEL = {spy: 'SPY', us10y_bps: '10Y', dxy: 'DXY', wti: 'WTI', vix: 'VIX'
 const SHOCK_U = {spy: '%', us10y_bps: 'bp', dxy: '%', wti: '%', vix: 'pt'};
 const DEFAULTS = {
   shock: {us10y_bps: 0, wti: 0, dxy: 0, vix: 0, spy: 0},
-  minT: 2, maxPE: null, maxPEG: null, minIV: null, earnN: null, minOpp: null, hideMissing: false,
+  minT: 2, maxPE: null, maxPEG: null, minIV: null, earnN: null, minEarnAway: null, minOpp: null, hideMissing: false,
+  // R4 customization (Settings drawer, custom.js): null = built-in default
+  cols: null, tapeIds: null, panels: {order: null, hidden: []}, density: 'compact', theme: 'dark', fmt: 'bp', defRange: '3M', defOverlay: '',
 };
 let D = null;              // core.json
 let S = load();            // persisted settings
@@ -18,7 +20,7 @@ const pxCache = {};
 let chart = null, mainSeries = null, ovSeries = null;
 
 function load() {
-  try { const s = JSON.parse(localStorage.getItem('so2-settings') || 'null'); if (s) return Object.assign({}, DEFAULTS, s, {shock: Object.assign({}, DEFAULTS.shock, s.shock || {})}); } catch (e) {}
+  try { const s = JSON.parse(localStorage.getItem('so2-settings') || 'null'); if (s) return Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), s, {shock: Object.assign({}, DEFAULTS.shock, s.shock || {}), panels: Object.assign({order: null, hidden: []}, s.panels || {})}); } catch (e) {}
   return JSON.parse(JSON.stringify(DEFAULTS));
 }
 function save() { try { localStorage.setItem('so2-settings', JSON.stringify(S)); } catch (e) {} writeHash(); }
@@ -99,12 +101,15 @@ function renderHeader() {
   $('#hstat').dataset.tip = `exported ${ex}\nmacro ${g.macro}\nequities ${g.equities}\nrelations ${g.relations}\ncrosscheck ${g.crosscheck}`;
 }
 function renderTape() {
-  $('#tape').innerHTML = D.tape.map(x => {
+  const ids = Array.isArray(S.tapeIds) ? S.tapeIds : null;
+  const items = ids ? ids.map(id => D.tape.find(x => x.id === id)).filter(Boolean) : D.tape;
+  $('#tape').innerHTML = items.map(x => {
     const stale = x.status && x.status !== 'ok';
     let val;
     if (x.id === 'regime') val = isNum(x.v) ? `${x.v} <span class="tier">${esc(x.tier || '')}</span>` : na('regime not computed');
     else val = isNum(x.v) ? num(x.v, x.unit === '$' || Math.abs(x.v) < 1000 ? 2 : 0) + (x.unit === '%' ? '%' : '') : na(`${x.label}: ${x.status || 'missing'}`);
-    const chg = x.id === 'regime' ? `<span class="dim">30/50/70/85</span>` : pct(x.chg, x.chgu === '%' ? 2 : 1, 'no prior value', x.chgu === '%' ? '%' : ' ' + (x.chgu || ''));
+    const pp = x.chgu === 'bp' && S.fmt === 'pct';   // Settings: rate changes in percentage points instead of bp (value / 100)
+    const chg = x.id === 'regime' ? `<span class="dim">30/50/70/85</span>` : pp ? pct(isNum(x.chg) ? x.chg / 100 : null, 2, 'no prior value', ' pp') : pct(x.chg, x.chgu === '%' ? 2 : 1, 'no prior value', x.chgu === '%' ? '%' : ' ' + (x.chgu || ''));
     const extra = x.extra ? ` <span class="dim">${esc(x.extra.label)} ${num(x.extra.v, 3)}</span>` : '';
     const tip = `${x.label}: ${x.src || ''}\nas of ${x.date || 'n/a'} · status ${x.status || 'n/a'}`;
     const sel = V.sel.kind === 's' && V.sel.id === tapeSeries(x.id) ? ' sel' : '';
@@ -130,13 +135,40 @@ const COLS = [
   {k: 'b10', h: 'β10Y', ph: 1, tip: '% stock move per +10bp 10Y yield (OLS, 252 sessions). Bright = |t| at or above your threshold'},
   {k: 'boil', h: 'βOil', ph: 1, tip: '% stock move per +1% WTI (OLS, 252 sessions)'},
   {k: 'scen', h: 'Scen', tip: 'Scenario impact %: sum(coef x your shock). Historical association, not a forecast'},
+  // optional columns (off by default; Settings > Screener columns)
+  {k: 'd5', h: '5d', opt: 1, tip: '5-session % change (Yahoo via yfinance)'},
+  {k: 'm1', h: '1M', opt: 1, tip: '1-month % change (Yahoo via yfinance)'},
+  {k: 'pe', h: 'P/E t', ph: 1, opt: 1, tip: 'Trailing P/E (Yahoo)'},
+  {k: 'vr', h: 'Vol/20d', ph: 1, opt: 1, tip: 'Session volume / 20-day average volume'},
+  {k: 'beta', h: 'Beta', ph: 1, opt: 1, tip: 'Provider beta (Yahoo), not our regression'},
+  {k: 'up', h: 'Upside', ph: 1, opt: 1, tip: 'Yahoo analyst mean target vs price, %. Not consensus EPS'},
+  {k: 'bdxy', h: 'βDXY', ph: 1, opt: 1, tip: '% stock move per +1% DXY (OLS, 252 sessions)'},
+  {k: 'bvix', h: 'βVIX', ph: 1, opt: 1, tip: '% stock move per +1pt VIX (OLS, 252 sessions)'},
+  {k: 'bspy', h: 'βSPY', ph: 1, opt: 1, tip: '% stock move per +1% SPY (OLS, 252 sessions)'},
+  {k: 'r2', h: 'R²', ph: 1, opt: 1, tip: 'R² of the 5-factor OLS (252 sessions)'},
+  {k: 'risk', h: 'Risk', ph: 1, opt: 1, tip: "Sam's Risk label · SmartOptions snapshot 2026-07-25 (read-only)"},
+  {k: 'qual', h: 'Qual', ph: 1, opt: 1, tip: "Sam's Quality label · SmartOptions snapshot 2026-07-25 (read-only)"},
 ];
+const COLK = {};
+COLS.forEach(c => { COLK[c.k] = c; });
+const DEFAULT_COLS = COLS.filter(c => !c.opt).map(c => c.k);
+function activeCols() {
+  const ks = Array.isArray(S.cols) && S.cols.length ? S.cols.filter(k => COLK[k]) : DEFAULT_COLS.slice();
+  if (!ks.includes('t')) ks.unshift('t');
+  return ks.map(k => COLK[k]);
+}
 function val(r, k) {
   switch (k) {
     case 'opp': return r.sam ? r.sam.opp : null;
     case 'b10': return r.rel && isNum(r.rel.c.us10y_bps) ? r.rel.c.us10y_bps * 10 : null;
     case 'boil': return r.rel ? r.rel.c.wti : null;
     case 'scen': return r.rel && scenOn() ? scenarioImpact(r.rel.c, S.shock) : null;
+    case 'bdxy': return r.rel ? r.rel.c.dxy : null;
+    case 'bvix': return r.rel ? r.rel.c.vix : null;
+    case 'bspy': return r.rel ? r.rel.c.spy : null;
+    case 'r2': return r.rel ? r.rel.r2 : null;
+    case 'risk': return r.sam ? r.sam.risk : null;
+    case 'qual': return r.sam ? r.sam.q : null;
     case 't': return r.t;
     default:
       if (k.startsWith('c:')) return r.rel ? r.rel.c[k.slice(2)] : null;
@@ -156,6 +188,7 @@ function screenPass(r) {
   if (isNum(S.maxPEG) && !(isNum(r.peg) && r.peg <= S.maxPEG)) return false;
   if (isNum(S.minIV) && !(isNum(r.iv) && r.iv >= S.minIV)) return false;
   if (isNum(S.earnN) && !(isNum(r.ern) && r.ern >= 0 && r.ern <= S.earnN)) return false;
+  if (isNum(S.minEarnAway) && !(isNum(r.ern) && r.ern >= S.minEarnAway)) return false;
   if (isNum(S.minOpp) && !(r.sam && isNum(r.sam.opp) && r.sam.opp >= S.minOpp)) return false;
   if (S.hideMissing && !(isNum(r.pef) && isNum(r.peg) && r.rel)) return false;
   return true;
@@ -180,11 +213,11 @@ function renderChips() {
     (V.sector ? `<button data-clr-sector="1" class="on">${esc(V.sector)} ✕</button>` : '');
 }
 function renderHead() {
-  $('#thead').innerHTML = '<tr>' + COLS.map(c => {
+  $('#thead').innerHTML = '<tr>' + activeCols().map(c => {
     if (c.k === 'scen' && !scenOn()) return '';
     const s = V.sort.k === c.k ? ' sorted' : '';
     const arrow = V.sort.k === c.k ? (V.sort.dir > 0 ? ' ▴' : ' ▾') : '';
-    return `<th class="${c.l ? 'l' : ''}${c.ph ? ' ph' : ''}${s}" data-k="${c.ns ? '' : c.k}"${c.tip ? ` data-tip="${esc(c.tip)}"` : ''}>${c.h}${arrow}</th>`;
+    return `<th class="${c.l ? 'l' : ''}${c.ph ? ' ph' : ''}${c.k === 'scen' ? ' scen' : ''}${s}" data-k="${c.ns ? '' : c.k}"${c.tip ? ` data-tip="${esc(c.tip)}"` : ''}>${c.h}${arrow}</th>`;
   }).join('') + '</tr>';
 }
 function cell(r, c) {
@@ -210,7 +243,22 @@ flags ${r.sam.flags || '-'}${r.sam.risk === 'AVOID' ? '\nAVOID -> his composite 
       const v = val(r, c.k), t = r.rel.t[f];
       return `<td class="ph ${Math.abs(t) >= S.minT ? 'sig' : 'nsig'}" data-tip="coef ${r.rel.c[f]} · t ${t} · R² ${r.rel.r2} · n ${r.rel.n}">${pct(v, 2)}</td>`;
     }
-    case 'scen': if (!scenOn()) return ''; return `<td>${r.rel ? pct(val(r, 'scen'), 2) : na('no regression')}</td>`;
+    case 'scen': if (!scenOn()) return ''; return `<td class="scen" data-tip="${esc(r.rel ? 'sum(coef x shock), 252-session OLS, n ' + r.rel.n + '\nhistorical association, not a forecast' : '')}">${r.rel ? pct(val(r, 'scen'), 2) : na('no regression')}</td>`;
+    case 'd5': return `<td data-tip="${esc(provTip(r, 'chg'))}">${pct(r.d5, 1, stReason(r, 'chg_5d', '5d change'))}</td>`;
+    case 'm1': return `<td data-tip="${esc(provTip(r, 'chg'))}">${pct(r.m1, 1, stReason(r, 'chg_1m', '1M change'))}</td>`;
+    case 'pe': return `<td class="ph${stl(r, 'pe_trailing')}" data-tip="${esc(fundTip(r, 'Trailing P/E'))}">${num(r.pe, 1, stReason(r, 'pe_trailing', 'trailing P/E'))}</td>`;
+    case 'vr': return `<td class="ph" data-tip="volume / 20-day avg volume\nYahoo Finance via yfinance, session ${esc(r.pxd || '')}">${isNum(r.vr) ? r.vr.toFixed(2) + 'x' : na(stReason(r, 'vol_ratio_20d', 'volume ratio'))}</td>`;
+    case 'beta': return `<td class="ph" data-tip="provider beta, Yahoo Finance via yfinance\nretrieved ${esc(r.rat || 'n/a')}">${num(r.beta, 2, stReason(r, 'beta_provider', 'beta'))}</td>`;
+    case 'up': return `<td class="ph" data-tip="Yahoo analyst mean target ${esc(isNum(r.tgt) ? r.tgt : 'n/a')} vs price\nnot consensus EPS (no licensed source)">${pct(r.up, 0, stReason(r, 'analyst', 'analyst target'))}</td>`;
+    case 'bdxy': case 'bvix': case 'bspy': {
+      const f = {bdxy: 'dxy', bvix: 'vix', bspy: 'spy'}[c.k];
+      if (!r.rel) return `<td class="ph">${na('no regression (insufficient history)')}</td>`;
+      const t = r.rel.t[f];
+      return `<td class="ph ${Math.abs(t) >= S.minT ? 'sig' : 'nsig'}" data-tip="coef ${r.rel.c[f]} · t ${t} · R² ${r.rel.r2} · n ${r.rel.n}">${pct(r.rel.c[f], 2)}</td>`;
+    }
+    case 'r2': return `<td class="ph" data-tip="${esc(r.rel ? '5-factor OLS, n ' + r.rel.n : '')}">${r.rel ? num(r.rel.r2, 2) : na('no regression (insufficient history)')}</td>`;
+    case 'risk': return `<td class="ph sam" data-tip="Sam snapshot 2026-07-25 (read-only)">${r.sam && r.sam.risk ? esc(r.sam.risk) : na("not in Sam's 2026-07-25 snapshot")}</td>`;
+    case 'qual': return `<td class="ph sam" data-tip="Sam snapshot 2026-07-25 (read-only)">${r.sam && r.sam.q ? esc(r.sam.q) : na("not in Sam's 2026-07-25 snapshot")}</td>`;
   }
   return '<td></td>';
 }
@@ -224,7 +272,7 @@ function renderTable() {
   renderHead(); renderChips();
   const rows = filtered();
   const selT = V.sel.kind === 't' ? V.sel.id : null;
-  $('#tbody').innerHTML = rows.map(r => `<tr data-t="${esc(r.t)}"${r.t === selT ? ' class="sel"' : ''}>${COLS.map(c => cell(r, c)).join('')}</tr>`).join('');
+  $('#tbody').innerHTML = rows.map(r => `<tr data-t="${esc(r.t)}"${r.t === selT ? ' class="sel"' : ''}>${activeCols().map(c => cell(r, c)).join('')}</tr>`).join('');
   const sc = scenOn() ? ' · scenario on: ' + FACTORS.filter(f => S.shock[f]).map(f => `${FLABEL[f]} ${S.shock[f] > 0 ? '+' : ''}${S.shock[f]}${SHOCK_U[f]}`).join(', ') + ' (historical association, not a forecast)' : '';
   const sk = V.sort.k.startsWith('c:') ? ` · sorted by ${FLABEL[V.sort.k.slice(2)]} coef` : '';
   $('#tmeta').innerHTML = `<span>${rows.length} of ${D.rows.length}${V.sector ? ' · ' + esc(V.sector) : ''}${sk}${sc}</span><span>Sam cols = snapshot 2026-07-25</span>`;
@@ -507,7 +555,7 @@ function wire() {
     if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); step(1); }
     else if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); step(-1); }
     else if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
-    else if (e.key === 'Escape') { $('#controls').hidden = true; $('#about').hidden = true; }
+    else if (e.key === 'Escape') document.querySelectorAll('aside.drawer').forEach(x => { x.hidden = true; });
   });
   $('#thead').addEventListener('click', e => {
     const th = e.target.closest('th[data-k]'); if (!th || !th.dataset.k) return;
@@ -549,24 +597,29 @@ function showTab(t) {
   if (t === 'macro' && window.SO2_macro) window.SO2_macro();
   writeHash();
 }
-function toggleDrawer(id) {
-  const el = $('#' + id), other = $('#' + (id === 'about' ? 'controls' : 'about'));
-  other.hidden = true; el.hidden = !el.hidden;
+function toggleDrawer(id, force) {
+  const el = $('#' + id);
+  document.querySelectorAll('aside.drawer').forEach(x => { if (x !== el) x.hidden = true; });
+  el.hidden = force == null ? !el.hidden : !force;
   if (!el.hidden && window['SO2_' + id]) window['SO2_' + id](el);
 }
 
 /* ---------- boot + refresh ---------- */
-function renderAll() { renderHeader(); renderTape(); renderTable(); renderSignals(); drawChart(); renderDetail(); }
+function renderAll() { renderHeader(); renderTape(); renderTable(); renderSignals(); drawChart(); renderDetail(); if (window.SO2_layout) window.SO2_layout(); }
 async function refresh() {
   if (document.visibilityState !== 'visible') return;
   try { const nd = await fetchJSON('data/core.json'); if (nd.exported_at !== D.exported_at) { D = nd; for (const k in pxCache) delete pxCache[k]; renderAll(); } } catch (e) { console.warn('refresh failed', e); }
 }
 async function boot() {
   try { D = await fetchJSON('data/core.json'); } catch (e) { document.body.insertAdjacentHTML('beforeend', `<div style="padding:20px">Data failed to load: ${esc(e)}</div>`); console.error(e); return; }
+  const hp0 = new URLSearchParams(location.hash.slice(1));
+  if (!hp0.get('r') && S.defRange) V.range = S.defRange;
+  if (hp0.get('ov') == null && S.defOverlay) V.overlay = S.defOverlay;
   readHash();
   if (V.sel.kind === 't' && V.sel.id !== 'SPY' && !rowOf(V.sel.id)) V.sel = {kind: 't', id: 'SPY'};
   selfCheck();
-  window.SO2 = {D: () => D, S: () => S, V, renderTable, renderAll, renderDetail, select, save, scenarioImpact, FACTORS, FLABEL, SHOCK_U, DEFAULTS, filtered, num, pct, na, esc, spark, isNum, seriesData, obsOf, showTab};
+  window.SO2 = {D: () => D, S: () => S, V, renderTable, renderAll, renderDetail, select, save, scenarioImpact, FACTORS, FLABEL, SHOCK_U, DEFAULTS, filtered, num, pct, na, esc, spark, isNum, seriesData, obsOf, showTab,
+    COLS, DEFAULT_COLS, activeCols, PRESETS, OVERLAYS, renderTape, drawChart, setRange, writeHash, toggleDrawer, rowOf, setS: x => { S = x; }, chartObj: () => chart};
   wire();
   renderAll();
   const op = new URLSearchParams(location.hash.slice(1)).get('open');
@@ -574,6 +627,7 @@ async function boot() {
   if (op === 'controls' || op === 'about') toggleDrawer(op);
   setInterval(refresh, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', refresh);
+  if (window.SO2_init) try { window.SO2_init(); } catch (e) { console.error("custom init failed", e); }
   window.SO2_ready = true;
 }
 boot();

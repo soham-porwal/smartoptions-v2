@@ -32,7 +32,7 @@ function renderGrid() {
     const obs = (D.macro[g] || []).filter(o => !HIDE.test(o.id));
     if (!obs.length) return '';
     const t = tr[g];
-    return `<div class="mgrp"><div class="sech"${t ? ` data-tip="${A.esc(t.evidence)}"` : ''}>${h}${t ? ` <span class="dim">trend: ${A.esc(t.label)}</span>` : ''}</div>
+    return `<div class="mgrp" data-g="${g}"><div class="sech"${t ? ` data-tip="${A.esc(t.evidence)}"` : ''}>${h}${t ? ` <span class="dim">trend: ${A.esc(t.label)}</span>` : ''}</div>
       <div class="mrow">${obs.map(tile).join('')}</div></div>`;
   }).join('');
 }

@@ -18,6 +18,7 @@ const SCREEN = [
   {k: 'maxPEG', h: 'Max PEG', min: 0.25, max: 5, step: 0.25},
   {k: 'minIV', h: 'Min ATM IV %', min: 10, max: 120, step: 5},
   {k: 'earnN', h: 'Earnings within N days', min: 1, max: 60, step: 1},
+  {k: 'minEarnAway', h: 'Earnings at least N days away', min: 1, max: 60, step: 1},
   {k: 'minOpp', h: "Min Sam Opp score", min: 0, max: 100, step: 5},
 ];
 function apply(sortScen) {
@@ -49,7 +50,7 @@ window.SO2_controls = function (el) {
     ${SCREEN.map(scrRow).join('')}
     <div class="ctl"><label><input type="checkbox" id="hideMissing" ${S.hideMissing ? 'checked' : ''}> Hide rows missing P/E, PEG or regression</label></div>
     <h3>Regime tiers</h3><p>Sam's regime thresholds: 30 / 50 / 70 / 85 (display only; his tier labels come from his code).</p>
-    <p><button data-reset>Reset all</button></p>`;
+    <p><button data-reset>Reset scenario + screen</button></p>`;
   el.oninput = e => {
     const t = e.target;
     if (t.dataset.f) {
@@ -69,7 +70,11 @@ window.SO2_controls = function (el) {
   el.onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.close != null) { el.hidden = true; return; }
-    if (b.dataset.reset != null) { Object.assign(S, JSON.parse(JSON.stringify(A.DEFAULTS))); window.SO2_controls(el); apply(false); return; }
+    if (b.dataset.reset != null) {   // scenario + screen only; layout/columns/theme reset lives in Settings
+      const d = JSON.parse(JSON.stringify(A.DEFAULTS));
+      for (const k of ['shock', 'minT', 'maxPE', 'maxPEG', 'minIV', 'earnN', 'minEarnAway', 'minOpp', 'hideMissing']) S[k] = d[k];
+      window.SO2_controls(el); apply(false); return;
+    }
     if (b.dataset.q != null) { const q = QUICK[+b.dataset.q][1]; for (const f in S.shock) S.shock[f] = q[f] || 0; window.SO2_controls(el); apply(true); }
   };
 };

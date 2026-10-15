@@ -275,7 +275,7 @@ window.SO2_settings = function (el) {
   el.innerHTML = `<button class="x" data-close>Close</button>
     <h3>Workspace</h3>
     <div class="srow"><input id="wsName" type="text" placeholder="name" maxlength="40" style="flex:1"><button data-wssave>Save current</button></div>
-    ${Object.keys(ws).map(n => `<div class="srow"><span>${esc(n)} <span class="dim">${esc((ws[n].saved_at || '').slice(0, 16).replace('T', ' '))}</span></span><span><button data-wsload="${esc(n)}">Load</button><button data-wsdel="${esc(n)}" title="remove this saved workspace from this browser">✕</button></span></div>`).join('') || '<p>No saved workspaces in this browser yet.</p>'}
+    ${Object.keys(ws).map(n => `<div class="srow"><span>${esc(n)} <span class="dim">${esc(ws[n].saved_at ? new Date(ws[n].saved_at).toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '')}</span></span><span><button data-wsload="${esc(n)}">Load</button><button data-wsdel="${esc(n)}" title="remove this saved workspace from this browser">✕</button></span></div>`).join('') || '<p>No saved workspaces in this browser yet.</p>'}
     <div class="srow"><button data-export>Export settings JSON</button><button data-import>Import JSON</button><button data-resetall>Reset everything</button></div>
     <textarea id="ioBox" rows="4" placeholder="Paste exported JSON here, then Import" spellcheck="false"></textarea>
     <h3>Display</h3>

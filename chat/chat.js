@@ -676,7 +676,7 @@
 
     const wrap = doc.createElement('div');
     wrap.innerHTML =
-      '<button type="button" id="soc-toggle" class="soc-toggle" title="Analyst chat (/)">ASK</button>' +
+      '<button type="button" id="soc-toggle" class="soc-toggle" title="Analyst chat">ASK</button>' +
       '<aside id="soc-panel" class="soc" aria-hidden="true" aria-label="SmartOptions analyst chat">' +
       '<div class="soc-hd"><span class="soc-tt">ANALYST</span><select class="soc-model" aria-label="Model">' +
       MODELS.map(x => '<option value="' + x.id + '">' + x.label + '</option>').join('') + '</select>' +
@@ -685,7 +685,7 @@
       '<div class="soc-row"><button type="button" class="soc-save">SAVE</button><button type="button" class="soc-forget">FORGET KEY</button></div>' +
       '<div class="soc-note">Stored only in this browser (localStorage) and sent only to api.anthropic.com. Do not use on a shared computer.</div></form>' +
       '<div class="soc-stat"></div><div class="soc-log" aria-live="polite"></div>' +
-      '<form class="soc-in"><textarea rows="2" placeholder="Ask about the dashboard  ( / focus, Esc close )"></textarea><button type="submit">ASK</button></form>' +
+      '<form class="soc-in"><textarea rows="2" placeholder="Ask about the dashboard  (Enter send, Esc close)"></textarea><button type="submit">ASK</button></form>' +
       '<div class="soc-disc">Research tool, not advice. Figures cite dashboard data; associations are not causes.</div></aside>';
     doc.body.appendChild(wrap);
     const $ = s => wrap.querySelector(s);

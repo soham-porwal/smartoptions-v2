@@ -557,7 +557,7 @@ function wire() {
     if (e.target.matches('input,select,textarea')) return;
     if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); step(1); }
     else if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); step(-1); }
-    else if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
+    else if (e.key === '/') { e.preventDefault(); e.stopImmediatePropagation(); $('#q').focus(); }   // '/' = search; chat opens from ASK
     else if (e.key === 'Escape') document.querySelectorAll('aside.drawer').forEach(x => { x.hidden = true; });
   });
   $('#thead').addEventListener('click', e => {

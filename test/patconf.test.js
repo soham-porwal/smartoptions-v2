@@ -34,6 +34,7 @@ test('earnings inside 7 days and FOMC lower the event component', () => {
   const far = C.compute(base()).components.find(c => c.key === 'events').score;
   const near = C.compute(base({row: row({ern: 3}), events: [{type: 'FOMC', date: '2026-10-20', days: 5}]})).components.find(c => c.key === 'events').score;
   assert.ok(far > near);
+  assert.match(C.compute(base()).components.find(c=>c.key==='events').score_meaning,/LOW score means MORE event risk/);
 });
 
 test('regime fit uses Sam tiers and mirrors for a bearish lean', () => {

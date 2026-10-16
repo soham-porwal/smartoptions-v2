@@ -481,7 +481,10 @@
     if (args.apply_to_dashboard) ui = callUi(ctx, 'set_scenario', [shocks]);
     return {shocks_used: used, units: m.units, method: m.methods.scenario || 'impact % = sum(coef x shock)', tickers_scored: res.length,
       tickers_skipped_no_coef: skipped.length, most_hurt: res.slice(0, n), most_helped: res.slice(-n).reverse(),
-      sector_view: sectors, caveat: 'historical association over ' + m.rel_window + ', not a forecast', ui_result: ui || undefined, cite: cites};
+      sector_view: sectors, caveat: 'historical association over ' + m.rel_window + ', not a forecast',
+      assumptions:['Linear, additive response using the stored coefficients held fixed.', 'Unspecified factor shocks are held at zero change.', 'The joint shocks are specified by the user; predictors need not be independent. OLS permits correlated predictors.'],
+      limitations:['No calibrated outcome probability or prediction interval is supplied.', 'No out-of-sample validation or causal identification is supplied.', 'Coefficient t-statistics use classic, non-robust standard errors; they do not establish scenario accuracy.'],
+      ui_result: ui || undefined, cite: cites};
   }
 
   // ---------------------------------------------------------------- UI action tools
@@ -616,7 +619,7 @@
       '11. The main company view is labeled Analyst in the dashboard (markets internally). To open Analyst for AAPL, call select with symbol AAPL. open_ticker_tab chooses Overview, Technicals or Strategies within that view; Analyst itself is not a ticker tab.',
       '12. Answer only the question asked. If a future price, consensus or missing field is unavailable, say not in the data without padding the answer with unrelated figures. Never infer a future catch-up merely because peers moved earlier.',
       '13. For a broad decision or strategy question, distill the measured market backdrop, company fundamentals, conditional scenarios, strategy alternatives and invalidating evidence. Use get_confidence when discussing confidence and explain its component math. Its score is evidence support, NOT odds of success; predictive confidence and a demonstrated trading edge require out-of-sample validation not supplied here. Ask briefly for missing ticker, horizon or risk constraints when those change the comparison. For a direct factual question, just answer it.',
-      '14. The implemented calculations are the source of analytical inference, not your intuition. Attribute each inference to its named model or rule (regime, macro trend, OLS/scenario, technical rule, strategy pricing/ranking, confidence components). Use tools and stated criteria for comparisons and screening. If the requested inference has no implemented or validated model, say not modeled. Do not replace missing models with an LLM-generated market narrative or claimed probability.',
+      '14. The implemented calculations are the source of analytical inference, not your intuition. Attribute each inference to its named model or rule (regime, macro trend, OLS/scenario, technical rule, strategy pricing/ranking, confidence components). Use tools and stated criteria for comparisons and screening. If the requested inference has no implemented or validated model, say not modeled. Do not replace missing models with an LLM-generated market narrative or claimed probability. Explain the supplied model assumptions; do not invent additional assumptions.',
     ].join('\n');
   }
 

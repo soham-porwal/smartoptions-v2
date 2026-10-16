@@ -268,7 +268,9 @@ function recommend(ctx) {
     const top = parts.slice().sort((a, b) => Math.abs(b.points) - Math.abs(a.points))[0];
     return {id: s.id, name: s.name, family: s.family, level: s.level, plain: s.plain, score: +score.toFixed(2), parts,
       flip: top ? `most sensitive to ${top.label.toLowerCase()} (${top.points > 0 ? '+' : ''}${top.points}); would drop/rise on ${top.flip}` : 'no rule applied',
-      payoff: pf && pf.ok ? {net: pf.net, maxGain: pf.maxGain, maxLoss: pf.maxLoss, breakevens: pf.breakevens, pop: pf.pop, strikes: pf.strikes, label: pf.label} : {unavailable: pf ? pf.reason : 'no price'}};
+      payoff: pf && pf.ok ? {net: pf.net, maxGain: pf.maxGain, maxLoss: pf.maxLoss, breakevens: pf.breakevens, pop: pf.pop, strikes: pf.strikes, label: pf.label,
+        units:'USD per underlying share, not per contract. Contract amounts require the actual contract multiplier.',method:pf.method,
+        probability_meaning:'POP is a risk-neutral pricing-model quantity, not a calibrated real-world success rate.'} : {unavailable: pf ? pf.reason : 'no price'}};
   }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
   const n = clamp(c.top || 8, 5, 8), ranked = scored.slice(0, n), rest = scored.slice(n);
   const whyNot = rest.map(x => { const neg = x.parts.filter(p => p.points < 0).sort((a, b) => a.points - b.points); return {id: x.id, name: x.name, score: x.score, why: neg.length ? neg.slice(0, 2).map(p => `${p.label} ${p.points}`).join('; ') : 'scored below the top ' + n + ' (no negative rule; others fit better)'}; });

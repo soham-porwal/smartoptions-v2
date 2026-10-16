@@ -1,11 +1,11 @@
 {
   "schema": "smartoptions.release.v1",
-  "release_id": "2026-10-15-v2-evidence-workflow",
-  "built_at": "2026-10-15T23:33:00.767085+00:00",
+  "release_id": "2026-10-15-v2-model-grounding",
+  "built_at": "2026-10-16T00:11:29.4217228Z",
   "data_session": "2026-10-15",
   "tickers": 365,
   "python_tests": 274,
-  "javascript_tests": 148,
+  "javascript_tests": 154,
   "sampled_values_passed": 30,
   "sampled_provenance_findings": 0,
   "sam_tickers_preserved": 343,
@@ -30,5 +30,7 @@
   "workflow": "question-led task branches; conditional evidence brief; sample Guide optional",
   "confidence": "documented heuristic support score; no calibrated probability of profit",
   "chat_output_token_cap": 4096,
-  "chat_reasoning_effort": "low"
+  "chat_reasoning_effort": "low",
+  "chat_inference_source": "Implemented calculations and stated rules; chat queries, explains and arranges the dashboard",
+  "chat_sample_validation": "Six completed published real-provider cases curated; later live retests blocked by insufficient API credits; semantic repair retests pending"
 }

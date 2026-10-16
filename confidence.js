@@ -63,7 +63,9 @@ function compute(inp) {
   let score = 0; for (const k in WEIGHTS) score += WEIGHTS[k] * clamp(comp[k].score);
   score = Math.round(score);
   const sam = row.sam ? {opportunity: row.sam.opp, quality: row.sam.q, trend: row.sam.trend, risk: row.sam.risk, flags: row.sam.flags, label: row.sam.label || 'SmartOptions snapshot 2026-07-25'} : null;
-  const comps = Object.keys(WEIGHTS).map(k => ({key: k, label: NAMES[k], weight: WEIGHTS[k], score: Math.round(clamp(comp[k].score)), summary: comp[k].summary, rule: comp[k].rule, reasons: comp[k].reasons}));
+  const comps = Object.keys(WEIGHTS).map(k => ({key: k, label: NAMES[k], weight: WEIGHTS[k], score: Math.round(clamp(comp[k].score)),
+    score_meaning:k==='events'?'Higher score means fewer scheduled-event deductions. A LOW score means MORE event risk, not less.':'Higher score means more support from this component; not an outcome probability.',
+    summary: comp[k].summary, rule: comp[k].rule, reasons: comp[k].reasons}));
   const weakest = comps.slice().sort((a, b) => a.score - b.score)[0];
   const headline = `${score}/100, ${dir} lean: ${comp.agreement.summary}; ${comp.data.summary}; ${comp.regime.summary}; ${comp.events.summary || 'no scheduled events'}. Weakest part: ${weakest.label.toLowerCase()} (${weakest.score}).`;
   return {ticker: inp.ticker, score, direction: dir, headline, label: LABEL, components: comps, sam, asof: inp.asof,

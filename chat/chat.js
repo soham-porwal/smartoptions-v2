@@ -349,7 +349,8 @@
   function obsOut(o, histN) {
     const h = o.history || [];
     const chg = num(o.value) != null && num(o.prior) != null ? round(o.value - o.prior, 4) : null;
-    return {id: o.id, group: o.group, label: o.label, value: o.value, unit: o.unit, period: o.period, observation_date: o.date,
+    const windowMatch=String(o.label || '').match(/\b(\d+)[- ]session\b/i);
+    return {id: o.id, group: o.group, label: o.label, value: o.value, unit: o.unit, window_sessions:windowMatch?Number(windowMatch[1]):undefined, period: o.period, observation_date: o.date,
       prior: o.prior, change_vs_prior: chg, transform: o.transform, status: o.status, note: o.note,
       provider: o.provider, series: o.series, retrieved_at: o.retrieved_at, history_tail: histN ? h.slice(-histN) : undefined};
   }
@@ -363,7 +364,7 @@
       picked = all;
       const cites = picked.map(o => citeObs(o, ctx));
       const res = picked.map((o, i) => { const r = obsOut(o, 0);
-        return {id: r.id, group: r.group, label: r.label, value: r.value, unit: r.unit, period: r.period, prior: r.prior,
+        return {id: r.id, group: r.group, label: r.label, value: r.value, unit: r.unit, window_sessions:r.window_sessions, period: r.period, prior: r.prior,
           change_vs_prior: r.change_vs_prior, status: r.status, note: r.note || undefined, cite_id: cites[i].id}; });
       return {series_count: res.length, as_of_session: m.asof_session, note: 'change_vs_prior = value minus prior observation of the same transform; monthly/quarterly values are not new today unless observation period is the latest release', trends: m.trends, observations: res, cite: dedupe(cites)};
     }

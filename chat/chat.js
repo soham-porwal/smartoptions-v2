@@ -165,12 +165,19 @@
   function bindToolEvidence(name, out, registry) {
     if (!registry || !out || out.error || name === 'ui_capabilities') return;
     if (name === 'get_ticker') {
+      if(out.benchmark && out.cite_id){registry.bind(out.cite_id,out);return;}
       const groups = {
         price_and_returns: ['price', 'price_date', 'chg_1d_pct', 'chg_5d_pct', 'chg_1m_pct', 'vol_ratio_20d', 'volume_window_sessions', 'range_52w'],
         fundamentals_analyst_earnings_iv: ['pe_trailing', 'pe_forward', 'peg', 'earnings', 'analyst', 'beta_provider', 'market_cap', 'atm_iv'],
         sam_snapshot: ['sam_snapshot'], relations: ['relations', 'attribution_last_session'], delayed_quote: ['delayed_quote'],
       };
       for (const [group, fields] of Object.entries(groups)) if (out.cite_map && out.cite_map[group]) registry.bind(out.cite_map[group], fields.map(k => out[k]));
+    } else if(name==='screen' && out.cite_map){
+      const rows=out.rows || [],current=out.cite_map.current_price_fundamentals_earnings;
+      registry.bind(current,{matched:out.matched,shown:out.shown,filters:out.filters,excluded:out.excluded_by_filter,days_reference:out.days_reference,
+        rows:rows.map(r=>Object.fromEntries(Object.entries(r).filter(([k])=>!k.startsWith('sam_'))))});
+      if(out.cite_map.sam_snapshot)registry.bind(out.cite_map.sam_snapshot,{as_of:out.sam_snapshot_as_of,rows:rows.map(r=>Object.fromEntries(Object.entries(r).filter(([k])=>k.startsWith('sam_'))))});
+      for(const c of out.cite || [])if(c.id!==current && c.id!==out.cite_map.sam_snapshot)registry.bind(c.id,rows.map(r=>({coef:r.coef,t:r.t})));
     } else if (name === 'get_macro') {
       // Do not let one macro series supply a different series' cited figure.
       for (const row of out.observations || []) registry.bind(row.cite_id, [row, {series_count: out.series_count, as_of_session: out.as_of_session}]);
@@ -608,6 +615,7 @@
       '11. The main company view is labeled Analyst in the dashboard (markets internally). To open Analyst for AAPL, call select with symbol AAPL. open_ticker_tab chooses Overview, Technicals or Strategies within that view; Analyst itself is not a ticker tab.',
       '12. Answer only the question asked. If a future price, consensus or missing field is unavailable, say not in the data without padding the answer with unrelated figures. Never infer a future catch-up merely because peers moved earlier.',
       '13. For a broad decision or strategy question, distill the measured market backdrop, company fundamentals, conditional scenarios, strategy alternatives and invalidating evidence. Use get_confidence when discussing confidence and explain its component math. Its score is evidence support, NOT odds of success; predictive confidence and a demonstrated trading edge require out-of-sample validation not supplied here. Ask briefly for missing ticker, horizon or risk constraints when those change the comparison. For a direct factual question, just answer it.',
+      '14. The implemented calculations are the source of analytical inference, not your intuition. Attribute each inference to its named model or rule (regime, macro trend, OLS/scenario, technical rule, strategy pricing/ranking, confidence components). Use tools and stated criteria for comparisons and screening. If the requested inference has no implemented or validated model, say not modeled. Do not replace missing models with an LLM-generated market narrative or claimed probability.',
     ].join('\n');
   }
 
